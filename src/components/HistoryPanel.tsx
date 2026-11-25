@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowUpRight,
   Bookmark,
@@ -11,6 +11,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { HistoryItem } from '../types';
+import { ClearAllActionButton } from './ActionButtons';
 import { MathTex } from './MathTex';
 
 interface HistoryPanelProps {
@@ -32,6 +33,14 @@ export function HistoryPanel({
   const [filter, setFilter] = useState<'all' | 'bookmarked'>('all');
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [clearedNotice, setClearedNotice] = useState(false);
+  const clearTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (clearTimerRef.current) window.clearTimeout(clearTimerRef.current);
+    };
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -59,6 +68,16 @@ export function HistoryPanel({
   if (items.length === 0) {
     return (
       <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#191C24] p-10 text-center space-y-3">
+        {clearedNotice && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border border-emerald-500/35 bg-emerald-500/10 text-xs font-medium text-emerald-600 dark:text-emerald-400"
+          >
+            <Check className="w-3.5 h-3.5 shrink-0" />
+            <span>Cleared successfully</span>
+          </div>
+        )}
         <div className="w-11 h-11 rounded-2xl bg-slate-100 dark:bg-[#242834] text-slate-500 dark:text-slate-400 flex items-center justify-center mx-auto">
           <History className="w-5 h-5" />
         </div>
@@ -114,14 +133,22 @@ export function HistoryPanel({
             ))}
           </div>
 
-          <button
-            type="button"
-            onClick={onClearAll}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors whitespace-nowrap shrink-0"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Clear All
-          </button>
+          <ClearAllActionButton
+            label="Clear All"
+            clearedLabel="Cleared successfully"
+            cleared={clearedNotice}
+            variant="danger"
+            size="sm"
+            onClick={() => {
+              if (clearTimerRef.current) window.clearTimeout(clearTimerRef.current);
+              setSearch('');
+              setFilter('all');
+              setExpandedId(null);
+              onClearAll();
+              setClearedNotice(true);
+              clearTimerRef.current = window.setTimeout(() => setClearedNotice(false), 2200);
+            }}
+          />
         </div>
       </div>
 

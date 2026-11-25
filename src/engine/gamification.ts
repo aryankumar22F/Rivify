@@ -137,11 +137,16 @@ export function computeGamification(
 
   const curriculum: { topic: string; level: 1 | 2 | 3 | 4 }[] = [
     { topic: 'Partial Derivative', level: 1 },
+    { topic: 'Limits & Continuity', level: 2 },
     { topic: 'Gradient', level: 3 },
     { topic: 'Directional Derivative', level: 3 },
     { topic: 'Linear Approximation', level: 3 },
+    { topic: 'Integration', level: 2 },
     { topic: 'Maxima & Minima', level: 4 },
+    { topic: 'Optimization', level: 4 },
     { topic: 'Vector Field', level: 4 },
+    { topic: 'Vector Theorems', level: 4 },
+    { topic: 'Linear Algebra', level: 3 },
   ];
 
   const learningPath: LearningPathStep[] = [];
@@ -202,6 +207,6 @@ export function computeGamification(
     currentStreak,
     todaySolved,
     badges,
-    learningPath: learningPath.slice(0, 5),
+    learningPath: learningPath.slice(0, 6),
   };
 }

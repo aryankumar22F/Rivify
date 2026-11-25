@@ -1,4 +1,5 @@
 import { BookOpen, Compass, Cpu, FunctionSquare, Layers, TrendingUp } from 'lucide-react';
+import { RivifyBrandLockup } from './RivifyLogo';
 
 const CAPABILITIES = [
   {
@@ -43,21 +44,24 @@ export function AboutView() {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#191C24] p-6 sm:p-8 space-y-4">
-        <div className="text-xs font-medium text-[#2F7CF6]">
-          Second-Semester University Project · Multi-Variable Calculus Companion
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <RivifyBrandLockup showTagline />
+          <span className="text-xs font-medium text-[#2F7CF6]">
+            Advanced Interactive Mathematics Learning Platform
+          </span>
         </div>
         <h2 className="text-2xl font-bold text-slate-900 dark:text-white text-balance">
-          About Derivify
+          About RIVIFY
         </h2>
         <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed max-w-2xl">
-          Derivify was designed as a practical learning companion for Multi-Variable Calculus,
-          originally built in Kotlin and Jetpack Compose with Material 3 and MVVM architecture, and
-          brought to the web with a full TypeScript symbolic differentiation engine and interactive
-          HTML5 Canvas mathematical visualizations.
+          RIVIFY combines modern mathematics, scientific computing, and intelligent learning tools
+          into a unified workspace. Built around a custom TypeScript symbolic differentiation engine
+          and interactive 2D/3D visualizations, RIVIFY helps learners explore concepts, calculate
+          exact analytical solutions, and master university-level mathematics.
         </p>
 
         <div className="pt-2 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-white/10">
-          <span>Architecture: Symbolic AST + MVVM Separation</span>
+          <span>Identity: Explore. Calculate. Master.</span>
           <span aria-hidden="true">·</span>
           <span>Typesetting: KaTeX Math Rendering</span>
           <span aria-hidden="true">·</span>

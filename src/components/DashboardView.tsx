@@ -1,49 +1,126 @@
 import { useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  ArrowUpRight,
   Award,
   BarChart3,
   Bookmark,
   Brain,
+  Calculator,
   Calendar,
   Check,
   CheckCircle2,
   ChevronRight,
+  Clock,
   Compass,
   FileDown,
   Flame,
+  FolderKanban,
+  History,
+  Layers,
+  LineChart,
   Lock,
+  PenTool,
   Share2,
   Target,
   Trophy,
 } from 'lucide-react';
+import { CLASSROOM_LESSONS } from '../data/classroomAndPapers';
+import { FORMULA_SHEET } from '../data/formulaSheet';
 import type { GamificationSummary } from '../engine/gamification';
-import type { ActivityEvent, HistoryItem, QuizAttempt } from '../types';
+import type {
+  ActivityEvent,
+  ClassroomLessonProgress,
+  ExamAttempt,
+  FlashcardProgress,
+  HistoryItem,
+  QuizAttempt,
+  RecentGraphSession,
+  ResearchProject,
+  SavedEquation,
+  ScientificHistoryItem,
+  ToolId,
+  WhiteboardSession,
+} from '../types';
 import { shareSolutionText } from '../utils/pdfReport';
 
 interface DashboardViewProps {
   history: HistoryItem[];
+  scientificHistory?: ScientificHistoryItem[];
+  examAttempts?: ExamAttempt[];
   quizAttempts: QuizAttempt[];
   activityEvents: ActivityEvent[];
   favoriteFormulaIds: string[];
+  flashcardProgress?: Record<string, FlashcardProgress>;
+  whiteboards?: WhiteboardSession[];
+  researchProjects?: ResearchProject[];
+  recentGraphs?: RecentGraphSession[];
+  savedEquations?: SavedEquation[];
+  classroomProgress?: Record<string, ClassroomLessonProgress>;
   gamification: GamificationSummary;
   dailyGoal: number;
   onPracticeTopic: (level: 1 | 2 | 3 | 4) => void;
   onOpenQuiz: () => void;
   onOpenFlashcards: () => void;
+  onOpenTool: (tool: ToolId) => void;
+  onReopenCalculation: (item: HistoryItem) => void;
   onDownloadPdf: () => void;
 }
 
 const TOPIC_TO_LEVEL: Record<string, 1 | 2 | 3 | 4> = {
   'Partial Derivative': 1,
+  'Limits & Continuity': 2,
+  'Chain Rule': 2,
+  Integration: 2,
   Gradient: 3,
   'Directional Derivative': 3,
   'Linear Approximation': 3,
-  'Chain Rule': 2,
+  'Linear Algebra': 3,
   'Maxima & Minima': 4,
+  Optimization: 4,
   'Vector Field': 4,
+  'Vector Theorems': 4,
   'Mixed Partials': 4,
 };
+
+const MODULE_TRACKER_TOPICS = [
+  'Partial Derivative',
+  'Limits & Continuity',
+  'Gradient',
+  'Directional Derivative',
+  'Linear Approximation',
+  'Integration',
+  'Maxima & Minima',
+  'Optimization',
+  'Vector Field',
+  'Vector Theorems',
+  'Linear Algebra',
+  'Differential Equations',
+  'Numerical Methods',
+  'Probability & Statistics',
+  'Complex Analysis',
+  'Discrete Mathematics',
+  'Fourier & Laplace',
+  'Operations Research',
+  'Advanced Geometry',
+] as const;
+
+const TOTAL_PLATFORM_MODULES = 45;
+
+const QUICK_LAUNCH_TOOLS: { id: ToolId; label: string; subtitle: string }[] = [
+  { id: 'scientific-calculator', label: 'Scientific Calculator', subtitle: 'DEG/RAD, fractions & tape' },
+  { id: 'math-solver', label: 'Math Problem Solver', subtitle: 'Symbolic & equations' },
+  { id: 'discrete-math', label: 'Discrete Mathematics Lab', subtitle: 'Sets, logic, graphs & induction' },
+  { id: 'fourier-laplace', label: 'Fourier & Laplace Lab', subtitle: 'Series, spectra & Laplace pairs' },
+  { id: 'operations-research', label: 'Operations Research Lab', subtitle: 'Simplex LP & VAM transport' },
+  { id: 'math-whiteboard', label: 'Math Whiteboard', subtitle: 'Draw, KaTeX pins & PNG/PDF' },
+  { id: 'formula-derivation', label: 'Formula Derivation Engine', subtitle: 'Proofs, Taylor & identity checks' },
+  { id: 'graph-animation', label: 'Graph Animation Studio', subtitle: 'Animate sweeps, Riemann & Taylor' },
+  { id: 'smart-revision', label: 'Smart Revision System', subtitle: 'SM-2 queue & weak-topic focus' },
+  { id: 'virtual-classroom', label: 'Virtual Classroom', subtitle: 'Interactive lessons & demos' },
+  { id: 'question-paper', label: 'Question Paper Generator', subtitle: 'Custom papers & answer keys' },
+  { id: 'research-workspace', label: 'Research Workspace', subtitle: 'Projects, LaTeX & report PDF' },
+];
 
 function getLast14Days(): { key: string; label: string }[] {
   const days: { key: string; label: string }[] = [];
@@ -60,23 +137,47 @@ function getLast14Days(): { key: string; label: string }[] {
 
 export function DashboardView({
   history,
+  scientificHistory = [],
+  examAttempts = [],
   quizAttempts,
   activityEvents,
   favoriteFormulaIds,
+  flashcardProgress = {},
+  whiteboards = [],
+  researchProjects = [],
+  recentGraphs = [],
+  savedEquations = [],
+  classroomProgress = {},
   gamification,
   dailyGoal,
   onPracticeTopic,
   onOpenQuiz,
   onOpenFlashcards,
+  onOpenTool,
+  onReopenCalculation,
   onDownloadPdf,
 }: DashboardViewProps) {
   const [sharedBadgeId, setSharedBadgeId] = useState<string | null>(null);
+
   const stats = useMemo(() => {
-    const totalCalculations = history.length;
+    const totalCalculations = history.length + scientificHistory.length;
+    const examQuestionsCount = examAttempts.reduce((s, e) => s + e.totalQuestions, 0);
+    const examCorrectCount = examAttempts.reduce((s, e) => s + e.correctCount, 0);
     const totalQuizAnswered = quizAttempts.length;
     const correctQuiz = quizAttempts.filter((a) => a.correct).length;
+    const totalAssessed = totalQuizAnswered + examQuestionsCount;
+    const totalAssessedCorrect = correctQuiz + examCorrectCount;
     const accuracy =
-      totalQuizAnswered > 0 ? Math.round((correctQuiz / totalQuizAnswered) * 100) : null;
+      totalAssessed > 0 ? Math.round((totalAssessedCorrect / totalAssessed) * 100) : null;
+    const examAvgPct =
+      examAttempts.length > 0
+        ? Math.round(
+            examAttempts.reduce(
+              (acc, a) => acc + (a.scoreMarks / Math.max(1, a.maxMarks)) * 100,
+              0
+            ) / examAttempts.length
+          )
+        : null;
 
     const topicMap = new Map<string, { total: number; correct: number }>();
     for (const att of quizAttempts) {
@@ -84,6 +185,14 @@ export function DashboardView({
       cur.total += 1;
       if (att.correct) cur.correct += 1;
       topicMap.set(att.category, cur);
+    }
+    for (const ex of examAttempts) {
+      for (const [topic, br] of Object.entries(ex.topicBreakdown)) {
+        const cur = topicMap.get(topic) ?? { total: 0, correct: 0 };
+        cur.total += br.total;
+        cur.correct += br.correct;
+        topicMap.set(topic, cur);
+      }
     }
 
     const topicBreakdown = Array.from(topicMap.entries())
@@ -120,12 +229,81 @@ export function DashboardView({
     const maxDayTotal = Math.max(1, ...days14.map((d) => d.total));
     const levelsCompleted = new Set(quizAttempts.map((a) => a.level)).size;
 
+    const touchedTopics = new Set<string>();
+    for (const h of history) touchedTopics.add(h.toolLabel);
+    for (const a of quizAttempts) touchedTopics.add(a.category);
+    for (const e of examAttempts) touchedTopics.add(e.topic);
+    for (const ev of activityEvents) {
+      if (ev.topic) touchedTopics.add(ev.topic);
+    }
+
+    const completedModulesCount = MODULE_TRACKER_TOPICS.filter((mod) => {
+      const q = topicMap.get(mod);
+      if (q && q.total > 0 && q.correct / q.total >= 0.75) return true;
+      return (
+        history.some((h) => h.toolLabel.toLowerCase().includes(mod.toLowerCase())) ||
+        activityEvents.some((ev) => ev.topic.toLowerCase().includes(mod.toLowerCase()))
+      );
+    }).length;
+
+    // Recently used tools derived strictly from calculation history & scientific calculator
+    const recentToolsMap = new Map<
+      ToolId,
+      { tool: ToolId; label: string; count: number; lastUsed: number }
+    >();
+    for (const h of history) {
+      const existing = recentToolsMap.get(h.tool);
+      if (!existing) {
+        recentToolsMap.set(h.tool, {
+          tool: h.tool,
+          label: h.toolLabel,
+          count: 1,
+          lastUsed: h.timestamp,
+        });
+      } else {
+        existing.count += 1;
+        existing.lastUsed = Math.max(existing.lastUsed, h.timestamp);
+      }
+    }
+    if (scientificHistory.length > 0) {
+      recentToolsMap.set('scientific-calculator', {
+        tool: 'scientific-calculator',
+        label: 'Scientific Calculator',
+        count: scientificHistory.length,
+        lastUsed: scientificHistory[0].timestamp,
+      });
+    }
+    if (examAttempts.length > 0) {
+      recentToolsMap.set('exam-prep', {
+        tool: 'exam-prep',
+        label: 'Exam Preparation Center',
+        count: examAttempts.length,
+        lastUsed: examAttempts[0].timestamp,
+      });
+    }
+    const recentTools = Array.from(recentToolsMap.values())
+      .sort((a, b) => b.lastUsed - a.lastUsed)
+      .slice(0, 6);
+
+    const dueRevisionCount = FORMULA_SHEET.filter((f) => {
+      const p = flashcardProgress[f.id];
+      return !p || p.nextReviewAt <= Date.now();
+    }).length;
+    const masteredFlashcards = FORMULA_SHEET.filter((f) => {
+      const p = flashcardProgress[f.id];
+      return p && p.repetitions >= 2 && p.intervalDays >= 3;
+    }).length;
+    const classroomCompletedCount = Object.values(classroomProgress).filter((c) => c.completed).length;
+
     return {
-      totalProblemsSolved: totalCalculations + totalQuizAnswered,
+      totalProblemsSolved: totalCalculations + totalAssessed,
       totalCalculations,
       totalQuizAnswered,
       correctQuiz,
+      totalAssessed,
+      totalAssessedCorrect,
       accuracy,
+      examAvgPct,
       topicBreakdown,
       weakTopics,
       days14,
@@ -133,8 +311,17 @@ export function DashboardView({
       weeklyActions,
       maxDayTotal,
       levelsCompleted,
+      topicsCoveredCount: touchedTopics.size,
+      completedModulesCount,
+      recentTools,
+      recentCalculations: history.slice(0, 5),
+      recentScientific: scientificHistory.slice(0, 4),
+      recentExams: examAttempts.slice(0, 4),
+      dueRevisionCount,
+      masteredFlashcards,
+      classroomCompletedCount,
     };
-  }, [history, quizAttempts, activityEvents]);
+  }, [history, scientificHistory, examAttempts, quizAttempts, activityEvents, flashcardProgress, classroomProgress]);
 
   const xpPct = Math.round((gamification.xpIntoLevel / gamification.xpForNextLevel) * 100);
   const goalPct = Math.min(100, Math.round((gamification.todaySolved / Math.max(1, dailyGoal)) * 100));
@@ -146,11 +333,14 @@ export function DashboardView({
       <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#191C24] p-6 space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#2F7CF6] mb-1">
+              RIVIFY · Explore. Calculate. Master.
+            </div>
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
               Learning Dashboard
             </h2>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              Real-time overview of your XP, daily goals, calculations, quiz accuracy, and study path.
+              Real-time overview of problems solved, quiz accuracy, topic coverage, recent calculations, and study progress.
             </p>
           </div>
           <button
@@ -226,50 +416,401 @@ export function DashboardView({
               {stats.totalProblemsSolved}
             </div>
             <div className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-              {stats.totalCalculations} calculations · {stats.totalQuizAnswered} quiz items
+              {history.length} symbolic · {scientificHistory.length} sci · {stats.totalAssessed} quiz/exam
             </div>
           </div>
 
           <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#22252E] p-4 space-y-1">
             <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-              <span>Quiz Accuracy</span>
+              <span>Practice &amp; Exam Accuracy</span>
               <Target className="w-4 h-4 text-emerald-500" />
             </div>
             <div className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
               {stats.accuracy !== null ? `${stats.accuracy}%` : '—'}
             </div>
             <div className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-              {stats.totalQuizAnswered > 0
-                ? `${stats.correctQuiz} of ${stats.totalQuizAnswered} correct`
-                : 'Complete a quiz to track accuracy'}
+              {stats.totalAssessed > 0
+                ? `${stats.totalAssessedCorrect} of ${stats.totalAssessed} correct`
+                : 'Complete a quiz or exam to track'}
             </div>
           </div>
 
           <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#22252E] p-4 space-y-1">
             <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-              <span>7-Day / 14-Day Study</span>
-              <Calendar className="w-4 h-4 text-amber-500" />
+              <span>Modules &amp; Completed Topics</span>
+              <Layers className="w-4 h-4 text-amber-500" />
             </div>
             <div className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
-              {stats.weeklyActions} this week
+              {TOTAL_PLATFORM_MODULES} modules
             </div>
             <div className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-              {stats.activeDaysCount}/14 active days · Levels: {stats.levelsCompleted}/4
+              {stats.completedModulesCount}/{MODULE_TRACKER_TOPICS.length} core topics · {stats.topicsCoveredCount} touched
             </div>
           </div>
 
           <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#22252E] p-4 space-y-1">
             <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-              <span>Saved Bookmarks</span>
+              <span>Exams &amp; 7-Day Study</span>
               <Bookmark className="w-4 h-4 text-sky-500" />
             </div>
             <div className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
-              {history.filter((h) => h.bookmarked).length + favoriteFormulaIds.length}
+              {examAttempts.length > 0 && stats.examAvgPct !== null
+                ? `${stats.examAvgPct}% avg`
+                : `${stats.weeklyActions} actions`}
             </div>
             <div className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-              {history.filter((h) => h.bookmarked).length} solutions · {favoriteFormulaIds.length} formulas
+              {examAttempts.length} exams · {stats.activeDaysCount}/14 active days ·{' '}
+              {history.filter((h) => h.bookmarked).length + favoriteFormulaIds.length} saved
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Quick Launch & Recently Used Tools + Recent Calculations */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="lg:col-span-6 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#191C24] p-5 sm:p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                <LineChart className="w-4 h-4 text-[#2F7CF6]" />
+                Tools & Recently Used
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Jump directly into university solvers, graphing, or your most used tools
+              </p>
+            </div>
+          </div>
+
+          {stats.recentTools.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Recently Used Calculators
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {stats.recentTools.map((rt) => (
+                  <button
+                    key={rt.tool}
+                    type="button"
+                    onClick={() => onOpenTool(rt.tool)}
+                    className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#22252E] hover:border-[#2F7CF6] px-3 py-2.5 text-left flex items-center justify-between gap-2 transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-slate-900 dark:text-white truncate">
+                        {rt.label}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                        {rt.count} {rt.count === 1 ? 'run' : 'runs'} ·{' '}
+                        {new Date(rt.lastUsed).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <ArrowUpRight className="w-4 h-4 text-[#2F7CF6] shrink-0" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Advanced Mathematics Modules
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {QUICK_LAUNCH_TOOLS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onOpenTool(item.id)}
+                  className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#22252E] hover:border-[#2F7CF6] px-3 py-2.5 text-left flex items-center justify-between gap-2 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-slate-900 dark:text-white truncate">
+                      {item.label}
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                      {item.subtitle}
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="lg:col-span-6 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#191C24] p-5 sm:p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                <History className="w-4 h-4 text-[#2F7CF6]" />
+                Recent Calculations
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Click any calculation to reopen it in the symbolic workspace
+              </p>
+            </div>
+            <span className="text-xs font-mono text-slate-500 dark:text-slate-400 tabular-nums">
+              {history.length} total
+            </span>
+          </div>
+
+          {stats.recentCalculations.length === 0 ? (
+            <div className="py-8 text-center space-y-3 rounded-xl border border-dashed border-slate-200 dark:border-white/10">
+              <Calculator className="w-6 h-6 mx-auto text-slate-400" />
+              <p className="text-xs text-slate-500 dark:text-slate-400 px-4">
+                No calculations saved yet. Solve a problem in any calculator tool and it will appear here automatically.
+              </p>
+              <button
+                type="button"
+                onClick={() => onOpenTool('partial-derivative')}
+                className="px-3.5 py-2 rounded-xl bg-[#2F7CF6] hover:bg-[#256AE0] text-white text-xs font-semibold transition-colors"
+              >
+                Open Calculator
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {stats.recentCalculations.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onReopenCalculation(item)}
+                  className="w-full text-left rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#22252E] hover:border-[#2F7CF6] p-3 flex items-center justify-between gap-3 transition-colors"
+                >
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                      <span className="font-semibold text-[#2F7CF6]">{item.toolLabel}</span>
+                      <span>·</span>
+                      <span className="inline-flex items-center gap-1 tabular-nums">
+                        <Clock className="w-3 h-3" />
+                        {new Date(item.timestamp).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="text-xs font-mono font-semibold text-slate-900 dark:text-white truncate">
+                      {item.expression}
+                    </div>
+                    <div className="text-[11px] font-mono text-slate-600 dark:text-slate-400 truncate">
+                      → {item.resultPlain}
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Scientific Calculator Usage History & Exam Performance Summary */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="lg:col-span-6 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#191C24] p-5 sm:p-6 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+              <Calculator className="w-4 h-4 text-[#2F7CF6]" />
+              Scientific Calculator History
+            </h3>
+            <button
+              type="button"
+              onClick={() => onOpenTool('scientific-calculator')}
+              className="text-xs font-semibold text-[#2F7CF6] hover:underline"
+            >
+              Open Scientific Calc
+            </button>
+          </div>
+          {stats.recentScientific.length === 0 ? (
+            <p className="text-xs text-slate-500 dark:text-slate-400 py-4">
+              No scientific expressions evaluated yet. Use the Scientific Calculator to see your expression tape here.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {stats.recentScientific.map((item) => (
+                <div
+                  key={item.id}
+                  className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#22252E] p-3 flex items-center justify-between gap-2 text-xs"
+                >
+                  <span className="font-mono text-slate-700 dark:text-slate-200 truncate">
+                    {item.expression}
+                  </span>
+                  <span className="font-mono font-bold text-[#2F7CF6] shrink-0 tabular-nums">
+                    = {item.result}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="lg:col-span-6 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#191C24] p-5 sm:p-6 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+              <Award className="w-4 h-4 text-emerald-500" />
+              Exam Preparation Performance
+            </h3>
+            <button
+              type="button"
+              onClick={() => onOpenTool('exam-prep')}
+              className="text-xs font-semibold text-[#2F7CF6] hover:underline"
+            >
+              Open Exam Center
+            </button>
+          </div>
+          {stats.recentExams.length === 0 ? (
+            <p className="text-xs text-slate-500 dark:text-slate-400 py-4">
+              No timed exams completed yet. Try Topic-Wise Practice, Engineering Mock, or AKTU-Style Mode.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {stats.recentExams.map((ex) => (
+                <div
+                  key={ex.id}
+                  className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#22252E] p-3 flex items-center justify-between gap-2 text-xs"
+                >
+                  <div className="min-w-0">
+                    <div className="font-semibold text-slate-900 dark:text-white truncate">
+                      {ex.title}
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                      {ex.correctCount}/{ex.totalQuestions} correct · {new Date(ex.timestamp).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <span className="font-mono font-bold text-emerald-500 shrink-0 tabular-nums">
+                    {ex.scoreMarks}/{ex.maxMarks}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Revision Progress, Whiteboards, Research Projects & Recent Graphs */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#191C24] p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+              <Brain className="w-4 h-4 text-[#2F7CF6]" />
+              Revision &amp; Classroom
+            </h3>
+            <button
+              type="button"
+              onClick={() => onOpenTool('smart-revision')}
+              className="text-xs font-semibold text-[#2F7CF6] hover:underline"
+            >
+              Revise
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="rounded-xl bg-slate-50 dark:bg-[#22252E] p-3">
+              <div className="text-slate-500 dark:text-slate-400">Due Cards</div>
+              <div className="font-mono font-bold text-slate-900 dark:text-white tabular-nums mt-0.5">
+                {stats.dueRevisionCount} due
+              </div>
+            </div>
+            <div className="rounded-xl bg-slate-50 dark:bg-[#22252E] p-3">
+              <div className="text-slate-500 dark:text-slate-400">Retained</div>
+              <div className="font-mono font-bold text-emerald-500 tabular-nums mt-0.5">
+                {stats.masteredFlashcards}/{FORMULA_SHEET.length}
+              </div>
+            </div>
+            <div className="rounded-xl bg-slate-50 dark:bg-[#22252E] p-3">
+              <div className="text-slate-500 dark:text-slate-400">Saved Formulas</div>
+              <div className="font-mono font-bold text-slate-900 dark:text-white tabular-nums mt-0.5">
+                {favoriteFormulaIds.length + savedEquations.length}
+              </div>
+            </div>
+            <div className="rounded-xl bg-slate-50 dark:bg-[#22252E] p-3">
+              <div className="text-slate-500 dark:text-slate-400">Classroom</div>
+              <div className="font-mono font-bold text-[#2F7CF6] tabular-nums mt-0.5">
+                {stats.classroomCompletedCount}/{CLASSROOM_LESSONS.length} done
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#191C24] p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+              <PenTool className="w-4 h-4 text-[#2F7CF6]" />
+              Recent Whiteboards ({whiteboards.length})
+            </h3>
+            <button
+              type="button"
+              onClick={() => onOpenTool('math-whiteboard')}
+              className="text-xs font-semibold text-[#2F7CF6] hover:underline"
+            >
+              Open Board
+            </button>
+          </div>
+          {whiteboards.length === 0 ? (
+            <p className="text-xs text-slate-500 dark:text-slate-400 py-3">
+              No saved whiteboard boards yet. Sketch derivations or diagrams in Math Whiteboard.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {whiteboards.slice(0, 3).map((wb) => (
+                <button
+                  key={wb.id}
+                  type="button"
+                  onClick={() => onOpenTool('math-whiteboard')}
+                  className="w-full text-left rounded-xl bg-slate-50 dark:bg-[#22252E] hover:border-[#2F7CF6] border border-transparent p-2.5 flex items-center justify-between gap-2 text-xs"
+                >
+                  <span className="font-medium text-slate-900 dark:text-white truncate">{wb.title}</span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums shrink-0">
+                    {new Date(wb.updatedAt).toLocaleDateString()}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#191C24] p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+              <FolderKanban className="w-4 h-4 text-emerald-500" />
+              Research &amp; Recent Graphs
+            </h3>
+            <button
+              type="button"
+              onClick={() => onOpenTool('research-workspace')}
+              className="text-xs font-semibold text-[#2F7CF6] hover:underline"
+            >
+              Workspace
+            </button>
+          </div>
+          {researchProjects.length === 0 && recentGraphs.length === 0 ? (
+            <p className="text-xs text-slate-500 dark:text-slate-400 py-3">
+              No research studies or plotted visualizations logged yet. Open Graphing Calculator or Research Workspace.
+            </p>
+          ) : (
+            <div className="space-y-2 text-xs">
+              {researchProjects.slice(0, 2).map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => onOpenTool('research-workspace')}
+                  className="w-full text-left rounded-xl bg-slate-50 dark:bg-[#22252E] p-2.5 flex items-center justify-between gap-2"
+                >
+                  <span className="font-semibold text-emerald-600 dark:text-emerald-400 truncate">
+                    Project: {p.title}
+                  </span>
+                  <span className="text-[11px] text-slate-400 shrink-0">{p.formulas.length} eq</span>
+                </button>
+              ))}
+              {recentGraphs.slice(0, 2).map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => onOpenTool(g.sourceTool as ToolId)}
+                  className="w-full text-left rounded-xl bg-slate-50 dark:bg-[#22252E] p-2.5 flex items-center justify-between gap-2"
+                >
+                  <span className="font-mono text-slate-800 dark:text-slate-200 truncate">
+                    Graph: {g.expression}
+                  </span>
+                  <ArrowUpRight className="w-3.5 h-3.5 text-[#2F7CF6] shrink-0" />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -286,6 +827,10 @@ export function DashboardView({
                 Combined calculations, quizzes, mock tests, and flashcard reviews
               </p>
             </div>
+            <span className="text-xs text-slate-500 dark:text-slate-400 inline-flex items-center gap-1 tabular-nums">
+              <Calendar className="w-3.5 h-3.5" />
+              {stats.activeDaysCount} active
+            </span>
           </div>
 
           <div className="h-44 flex items-end gap-1.5 sm:gap-2 pt-4">
@@ -383,12 +928,11 @@ export function DashboardView({
 
       {/* Personalized Learning Path + Achievements */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Personalized Learning Path */}
         <div className="lg:col-span-6 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#191C24] p-5 sm:p-6 space-y-4">
           <div>
             <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
               <Compass className="w-4 h-4 text-[#2F7CF6]" />
-              Personalized Learning Path
+              Recommended Next Topics
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Adaptive curriculum recommendations ordered by your current accuracy
@@ -501,8 +1045,8 @@ export function DashboardView({
                       type="button"
                       onClick={async () => {
                         await shareSolutionText(
-                          `Derivify Achievement Unlocked: ${badge.title}`,
-                          `I unlocked "${badge.title}" on Derivify (${badge.description}) · Level ${gamification.level} (${gamification.xp} XP)`
+                          `RIVIFY Achievement Unlocked: ${badge.title}`,
+                          `I unlocked "${badge.title}" on RIVIFY (${badge.description}) · Level ${gamification.level} (${gamification.xp} XP)`
                         );
                         setSharedBadgeId(badge.id);
                         setTimeout(() => setSharedBadgeId(null), 1600);

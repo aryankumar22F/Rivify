@@ -1,6 +1,6 @@
 {
-  "name": "Derivify",
-  "description": "Multi-variable calculus learning companion featuring a custom symbolic differentiation engine, step-by-step derivations, interactive 2D/3D function and vector field visualizations, formula reference sheets, and adaptive quizzes.",
+  "name": "RIVIFY",
+  "description": "RIVIFY — Explore. Calculate. Master. An advanced interactive mathematics learning platform featuring symbolic calculus, 2D/3D visualizations, engineering math labs, and adaptive quizzes.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -92,7 +92,7 @@ export function SettingsModal({
                 Learner Name
               </div>
               <div className="text-xs text-slate-500 dark:text-slate-400">
-                Shown on Weekly Leaderboard & Challenges
+                Included on exported PDF study reports
               </div>
             </div>
             <input

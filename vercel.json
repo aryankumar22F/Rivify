@@ -8,7 +8,7 @@
       "destination": "/api/index?__vpath=$1"
     },
     {
-      "source": "/((?!api/|assets/).*)",
+      "source": "/((?!api/|assets/|sw\\.js|workbox-.*|manifest\\.webmanifest|icon\\.svg|.*\\.png).*)",
       "destination": "/index.html"
     }
   ]

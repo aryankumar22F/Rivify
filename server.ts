@@ -13,7 +13,10 @@ async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: false,
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -26,7 +29,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Derivify server listening on http://0.0.0.0:${PORT}`);
+    console.log(`RIVIFY server listening on http://0.0.0.0:${PORT}`);
   });
 }
 

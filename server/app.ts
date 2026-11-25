@@ -9,48 +9,14 @@ import { GoogleGenAI, type GenerateContentParameters } from '@google/genai';
 function resolveWritableDataDir(): string {
   // Vercel and read-only serverless filesystems must write only to os.tmpdir()
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
-    return path.join(os.tmpdir(), 'derivify-data');
+    return path.join(os.tmpdir(), 'rivify-data');
   }
   return path.resolve(process.cwd(), '.data');
 }
 
 const DATA_DIR = resolveWritableDataDir();
 const SYNC_DIR = path.resolve(DATA_DIR, 'sync');
-const SOCIAL_FILE = path.resolve(DATA_DIR, 'social.json');
 
-interface StoredLeaderboardEntry {
-  id: string;
-  displayName: string;
-  weekKey: string;
-  xp: number;
-  accuracy: number;
-  problemsSolved: number;
-  streak: number;
-  updatedAt: number;
-}
-
-interface StoredChallengeRoom {
-  code: string;
-  creatorName: string;
-  topic: string;
-  seed: number;
-  questionCount: number;
-  createdAt: number;
-  submissions: {
-    playerName: string;
-    score: number;
-    total: number;
-    elapsedSeconds: number;
-    submittedAt: number;
-  }[];
-}
-
-interface SocialStore {
-  leaderboard: StoredLeaderboardEntry[];
-  challenges: Record<string, StoredChallengeRoom>;
-}
-
-let memorySocialStore: SocialStore | null = null;
 const memorySyncStore = new Map<string, { syncedAt: number; snapshot: unknown }>();
 
 function ensureDataDirs(): boolean {
@@ -61,53 +27,6 @@ function ensureDataDirs(): boolean {
   } catch {
     return false;
   }
-}
-
-function readSocialStore(): SocialStore {
-  if (memorySocialStore) return memorySocialStore;
-  if (ensureDataDirs()) {
-    try {
-      if (fs.existsSync(SOCIAL_FILE)) {
-        const parsed = JSON.parse(fs.readFileSync(SOCIAL_FILE, 'utf8')) as Partial<SocialStore>;
-        memorySocialStore = {
-          leaderboard: Array.isArray(parsed.leaderboard) ? parsed.leaderboard : [],
-          challenges:
-            parsed.challenges && typeof parsed.challenges === 'object' ? parsed.challenges : {},
-        };
-        return memorySocialStore;
-      }
-    } catch {
-      // ignore corrupt read
-    }
-  }
-  memorySocialStore = { leaderboard: [], challenges: {} };
-  return memorySocialStore;
-}
-
-function writeSocialStore(store: SocialStore) {
-  memorySocialStore = store;
-  if (ensureDataDirs()) {
-    try {
-      fs.writeFileSync(SOCIAL_FILE, JSON.stringify(store, null, 2), 'utf8');
-    } catch {
-      // keep in-memory store if disk write fails in restricted serverless environments
-    }
-  }
-}
-
-function sanitizeName(raw: unknown, fallback = 'Scholar'): string {
-  if (typeof raw !== 'string') return fallback;
-  const cleaned = raw.replace(/[^a-zA-Z0-9\s._-]/g, '').trim().slice(0, 28);
-  return cleaned || fallback;
-}
-
-function getIsoWeekKey(date = new Date()): string {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-  return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
 }
 
 function resolveSyncTarget(passphrase: string): { hash: string; filePath: string } {
@@ -154,7 +73,7 @@ function extractReadableError(err: unknown): { status: number; message: string }
           return {
             status: 503,
             message:
-              'The AI tutor is temporarily busy due to high demand. Please click Retry in a moment.',
+              'The handwriting recognition service is temporarily busy due to high demand. Please try again in a moment.',
           };
         }
         return { status: code, message: parsed.error.message };
@@ -183,11 +102,11 @@ function extractReadableError(err: unknown): { status: number; message: string }
     return {
       status: 503,
       message:
-        'The AI tutor is temporarily busy due to high demand. Please click Retry in a moment.',
+        'The handwriting recognition service is temporarily busy due to high demand. Please try again in a moment.',
     };
   }
 
-  return { status: 500, message: raw || 'Unable to reach AI Calculus Assistant.' };
+  return { status: 500, message: raw || 'Unable to process handwriting input.' };
 }
 
 function isTransientError(err: unknown): boolean {
@@ -237,124 +156,12 @@ async function generateWithResilience(
   throw lastErr;
 }
 
-const CALCULUS_SYSTEM_INSTRUCTION = `You are Derivify's Multi-Variable Calculus Tutor for university engineering and mathematics students.
-Guidelines:
-1. Be mathematically rigorous, clear, and encouraging.
-2. Always format mathematical expressions in clean LaTeX using $...$ for inline math and $$...$$ for display equations.
-3. When explaining derivatives or multivariable operations, explicitly name the differentiation rules used (e.g., Power Rule, Product Rule, Quotient Rule, Chain Rule, Clairaut's Theorem, Hessian Test).
-4. When a student submits their attempted solution or asks about a mistake, identify the exact algebraic or rule error kindly, show the corrected step-by-step derivation, and state the final simplified answer.
-5. Keep responses structured with concise numbered steps and short paragraphs.`;
-
-const HINT_SYSTEM_INSTRUCTION = `You are Derivify's Socratic Calculus Tutor.
-Instead of immediately revealing the final simplified answer, give the student:
-1. The key rule or theorem to apply first.
-2. A targeted hint for the very next step using clean LaTeX ($...$ and $$...$$).
-3. A short guiding question so they can finish the derivation themselves.`;
-
 export function createApiApp() {
   const app = express();
   app.use(express.json({ limit: '4mb' }));
 
   app.get('/api/health', (_req, res) => {
-    res.json({ ok: true, aiConfigured: Boolean(process.env.GEMINI_API_KEY) });
-  });
-
-  // AI Calculus Assistant chat endpoint
-  app.post('/api/assistant/chat', async (req, res) => {
-    try {
-      const { messages, context, tutorMode } = req.body as {
-        messages?: { role: 'user' | 'assistant'; content: string }[];
-        tutorMode?: 'explain' | 'hint';
-        context?: {
-          tool?: string;
-          expression?: string;
-          result?: string;
-        };
-      };
-
-      if (!Array.isArray(messages) || messages.length === 0) {
-        res.status(400).json({ error: 'At least one message is required.' });
-        return;
-      }
-
-      const ai = createGeminiClient();
-      const baseInstruction =
-        tutorMode === 'hint' ? HINT_SYSTEM_INSTRUCTION : CALCULUS_SYSTEM_INSTRUCTION;
-
-      const contextNote = context?.expression
-        ? `\n\nCurrent Calculator Context:\n- Active Tool: ${context.tool ?? 'Calculator'}\n- Expression: ${context.expression}\n- Symbolic Result: ${context.result ?? 'N/A'}`
-        : '';
-
-      const historyContents = messages.map((m) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: String(m.content).slice(0, 4000) }],
-      }));
-
-      const response = await generateWithResilience(ai, {
-        contents: historyContents,
-        config: {
-          systemInstruction: baseInstruction + contextNote,
-        },
-      });
-
-      const reply = response.text?.trim();
-      if (!reply) {
-        res.status(502).json({ error: 'The assistant returned an empty response.' });
-        return;
-      }
-
-      res.json({ reply });
-    } catch (err: unknown) {
-      const { status, message } = extractReadableError(err);
-      res.status(status).json({ error: message });
-    }
-  });
-
-  // Mistake Analysis endpoint
-  app.post('/api/assistant/check-work', async (req, res) => {
-    try {
-      const { expression, variable, expectedSymbolic, studentAttempt } = req.body as {
-        expression?: string;
-        variable?: string;
-        expectedSymbolic?: string;
-        studentAttempt?: string;
-      };
-
-      if (!expression || !studentAttempt) {
-        res.status(400).json({
-          error: 'Both the original expression and your attempted solution are required.',
-        });
-        return;
-      }
-
-      const ai = createGeminiClient();
-      const prompt = `A student tried to differentiate f = ${expression} with respect to ${
-        variable || 'x'
-      }.
-Our symbolic engine verified the exact derivative is: ${expectedSymbolic || 'N/A'}.
-The student's attempted answer is: ${studentAttempt}.
-
-Analyze whether the student's answer is mathematically equivalent to the exact derivative.
-- If it IS equivalent (even if written in unsimplified or differently ordered form), confirm they are correct and note any optional simplification.
-- If it has a mistake, pinpoint the exact rule or algebra error (e.g., forgot Chain Rule factor, sign error in Quotient Rule, treated y as variable instead of constant), and walk through the correct derivation step by step using LaTeX ($...$ and $$...$$).`;
-
-      const response = await generateWithResilience(ai, {
-        contents: prompt,
-        config: {
-          systemInstruction: CALCULUS_SYSTEM_INSTRUCTION,
-        },
-      });
-
-      const reply = response.text?.trim();
-      if (!reply) {
-        res.status(502).json({ error: 'Empty response from assistant.' });
-        return;
-      }
-      res.json({ reply });
-    } catch (err: unknown) {
-      const { status, message } = extractReadableError(err);
-      res.status(status).json({ error: message });
-    }
+    res.json({ ok: true, ocrConfigured: Boolean(process.env.GEMINI_API_KEY) });
   });
 
   // Handwriting recognition endpoint
@@ -411,125 +218,102 @@ Do not include "f(x,y) =", markdown backticks, or any extra words. Just the expr
     }
   });
 
-  // Weekly Leaderboard
-  app.get('/api/social/leaderboard', (req, res) => {
-    const weekKey =
-      typeof req.query.week === 'string' && /^\d{4}-W\d{2}$/.test(req.query.week)
-        ? req.query.week
-        : getIsoWeekKey();
-    const store = readSocialStore();
-    const entries = store.leaderboard
-      .filter((e) => e.weekKey === weekKey)
-      .sort((a, b) => b.xp - a.xp || b.accuracy - a.accuracy)
-      .slice(0, 50);
-    res.json({ weekKey, entries });
-  });
+  // Math Scanner OCR endpoint for uploaded images (returns expression + LaTeX only, never fabricates solutions)
+  app.post('/api/scanner/recognize-image', async (req, res) => {
+    try {
+      const { imageBase64, mimeType } = req.body as {
+        imageBase64?: string;
+        mimeType?: string;
+      };
+      if (!imageBase64 || typeof imageBase64 !== 'string') {
+        res.status(400).json({ error: 'Uploaded equation image is required.' });
+        return;
+      }
 
-  app.post('/api/social/leaderboard', (req, res) => {
-    const { id, displayName, xp, accuracy, problemsSolved, streak } = req.body as Record<
-      string,
-      unknown
-    >;
-    const cleanId =
-      typeof id === 'string' && /^[a-zA-Z0-9_-]{4,64}$/.test(id)
-        ? id
-        : `user-${crypto.randomBytes(6).toString('hex')}`;
-    const cleanName = sanitizeName(displayName, 'Derivify Scholar');
-    const cleanXp = Math.max(0, Math.min(1000000, Math.floor(Number(xp) || 0)));
-    const cleanAcc = Math.max(0, Math.min(100, Math.round(Number(accuracy) || 0)));
-    const cleanSolved = Math.max(0, Math.min(100000, Math.floor(Number(problemsSolved) || 0)));
-    const cleanStreak = Math.max(0, Math.min(3650, Math.floor(Number(streak) || 0)));
-    const weekKey = getIsoWeekKey();
+      const dataUrlMatch = imageBase64.match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,(.+)$/i);
+      const cleanMime = dataUrlMatch
+        ? dataUrlMatch[1].toLowerCase() === 'image/jpg'
+          ? 'image/jpeg'
+          : dataUrlMatch[1].toLowerCase()
+        : mimeType && /^image\/(png|jpeg|jpg|webp)$/i.test(mimeType)
+        ? mimeType.toLowerCase() === 'image/jpg'
+          ? 'image/jpeg'
+          : mimeType.toLowerCase()
+        : 'image/png';
+      const base64Data = dataUrlMatch ? dataUrlMatch[2] : imageBase64;
 
-    const store = readSocialStore();
-    const existingIdx = store.leaderboard.findIndex(
-      (e) => e.id === cleanId && e.weekKey === weekKey
-    );
-    const entry: StoredLeaderboardEntry = {
-      id: cleanId,
-      displayName: cleanName,
-      weekKey,
-      xp: cleanXp,
-      accuracy: cleanAcc,
-      problemsSolved: cleanSolved,
-      streak: cleanStreak,
-      updatedAt: Date.now(),
-    };
-    if (existingIdx >= 0) {
-      store.leaderboard[existingIdx] = entry;
-    } else {
-      store.leaderboard.push(entry);
+      if (base64Data.length < 32) {
+        res.status(400).json({ error: 'Image payload appears empty or corrupted.' });
+        return;
+      }
+
+      const ai = createGeminiClient();
+      const response = await generateWithResilience(ai, {
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                mimeType: cleanMime,
+                data: base64Data,
+              },
+            },
+            {
+              text: `Extract ONLY the mathematical expression or equation visible in this image.
+Do NOT solve the equation or invent steps.
+Respond strictly as a JSON object with keys:
+- "readable": boolean (true if a valid math expression/equation is legible, false if image has no legible math)
+- "expression": string (single-line plain-text syntax compatible with a math parser using *, /, +, -, ^, parentheses, =, and functions like sin, cos, tan, ln, log, exp, sqrt; e.g. "x^2 - 5*x + 6 = 0" or "2*x^2*y + sin(x)")
+- "latex": string (clean LaTeX representation of the extracted expression)
+- "detectedCategory": string (e.g. "Algebraic Equation", "Calculus Expression", "Linear System", "Trigonometric Expression", or "Unreadable")
+- "reason": string (only brief explanation if readable is false or notation was ambiguous).`,
+            },
+          ],
+        },
+        config: {
+          responseMimeType: 'application/json',
+        },
+      });
+
+      const rawText = (response.text ?? '{}')
+        .replace(/```json\n?/gi, '')
+        .replace(/```/g, '')
+        .trim();
+
+      let parsed: {
+        readable?: boolean;
+        expression?: string;
+        latex?: string;
+        detectedCategory?: string;
+        reason?: string;
+      };
+      try {
+        parsed = JSON.parse(rawText);
+      } catch {
+        res.status(422).json({
+          error: 'OCR could not structure a mathematical expression from this image. Try a clearer crop.',
+        });
+        return;
+      }
+
+      if (parsed.readable === false || !parsed.expression?.trim()) {
+        res.status(422).json({
+          error:
+            parsed.reason?.trim() ||
+            'No legible mathematical equation was detected in the uploaded image.',
+        });
+        return;
+      }
+
+      res.json({
+        expression: parsed.expression.trim(),
+        latex: (parsed.latex ?? parsed.expression).trim(),
+        detectedCategory: parsed.detectedCategory?.trim() || 'Mathematical Expression',
+        notes: parsed.reason?.trim() || undefined,
+      });
+    } catch (err: unknown) {
+      const { status, message } = extractReadableError(err);
+      res.status(status).json({ error: message });
     }
-    writeSocialStore(store);
-    res.json({ entry, weekKey });
-  });
-
-  // Friends Challenges & Quiz Competitions
-  app.post('/api/social/challenges', (req, res) => {
-    const { creatorName, topic, questionCount } = req.body as Record<string, unknown>;
-    const cleanCreator = sanitizeName(creatorName, 'Challenger');
-    const cleanTopic =
-      typeof topic === 'string' && topic.trim().length > 0
-        ? topic.trim().slice(0, 48)
-        : 'Mixed Multivariable';
-    const count = Math.max(5, Math.min(12, Math.floor(Number(questionCount) || 5)));
-    const code = crypto.randomBytes(3).toString('hex').toUpperCase();
-    const seed = crypto.randomInt(10000, 99999999);
-
-    const room: StoredChallengeRoom = {
-      code,
-      creatorName: cleanCreator,
-      topic: cleanTopic,
-      seed,
-      questionCount: count,
-      createdAt: Date.now(),
-      submissions: [],
-    };
-    const store = readSocialStore();
-    store.challenges[code] = room;
-    writeSocialStore(store);
-    res.json({ room });
-  });
-
-  app.get('/api/social/challenges/:code', (req, res) => {
-    const code = String(req.params.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (!/^[A-Z0-9]{4,10}$/.test(code)) {
-      res.status(400).json({ error: 'Invalid challenge code format.' });
-      return;
-    }
-    const store = readSocialStore();
-    const room = store.challenges[code];
-    if (!room) {
-      res.status(404).json({ error: 'Challenge room not found. Check the 6-character code.' });
-      return;
-    }
-    res.json({ room });
-  });
-
-  app.post('/api/social/challenges/:code/submit', (req, res) => {
-    const code = String(req.params.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (!/^[A-Z0-9]{4,10}$/.test(code)) {
-      res.status(400).json({ error: 'Invalid challenge code.' });
-      return;
-    }
-    const store = readSocialStore();
-    const room = store.challenges[code];
-    if (!room) {
-      res.status(404).json({ error: 'Challenge room not found.' });
-      return;
-    }
-    const { playerName, score, total, elapsedSeconds } = req.body as Record<string, unknown>;
-    const submission = {
-      playerName: sanitizeName(playerName, 'Player'),
-      score: Math.max(0, Math.min(room.questionCount, Math.floor(Number(score) || 0))),
-      total: Math.max(1, Math.min(20, Math.floor(Number(total) || room.questionCount))),
-      elapsedSeconds: Math.max(1, Math.min(3600, Math.floor(Number(elapsedSeconds) || 1))),
-      submittedAt: Date.now(),
-    };
-    room.submissions.push(submission);
-    room.submissions.sort((a, b) => b.score - a.score || a.elapsedSeconds - b.elapsedSeconds);
-    writeSocialStore(store);
-    res.json({ room });
   });
 
   // Optional Cloud Sync

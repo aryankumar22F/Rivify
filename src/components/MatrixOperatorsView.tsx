@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Calculator, Check, Copy, FileDown, Grid3X3, MessageSquare, Save } from 'lucide-react';
+import { Calculator, Check, Copy, FileDown, Grid3X3, Save } from 'lucide-react';
 import {
   solveHessianAndLaplacian,
   solveJacobian,
@@ -12,13 +12,11 @@ import { MathTex } from './MathTex';
 
 interface MatrixOperatorsViewProps {
   settings: AppSettings;
-  onAskAI: (ctx: { tool: string; expression: string; result: string }) => void;
   onSaveToNotebook: (note: { title: string; topic: string; content: string }) => void;
 }
 
 export function MatrixOperatorsView({
   settings,
-  onAskAI,
   onSaveToNotebook,
 }: MatrixOperatorsViewProps) {
   const [mode, setMode] = useState<'jacobian' | 'hessian'>('jacobian');
@@ -112,7 +110,7 @@ export function MatrixOperatorsView({
 
   const handleShare = async () => {
     triggerHaptic(settings.hapticsEnabled, 10);
-    const status = await shareSolutionText('Derivify Matrix Calculation', summaryPlain);
+    const status = await shareSolutionText('RIVIFY Matrix Calculation', summaryPlain);
     if (status === 'copied' || status === 'shared') {
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
@@ -344,20 +342,6 @@ export function MatrixOperatorsView({
               <span>{mode === 'jacobian' ? 'Jacobian Matrix Result' : 'Hessian & Laplacian Result'}</span>
             </h3>
             <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() =>
-                  onAskAI({
-                    tool: mode === 'jacobian' ? 'Jacobian Matrix' : 'Hessian & Laplacian',
-                    expression: mode === 'jacobian' ? `⟨${f1}, ${f2}⟩` : scalarExpr,
-                    result: summaryPlain,
-                  })
-                }
-                className="h-8 px-2.5 rounded-lg text-xs font-medium text-[#2F7CF6] hover:bg-[#2F7CF6]/10 inline-flex items-center gap-1"
-              >
-                <MessageSquare className="w-3.5 h-3.5" />
-                <span>Ask AI</span>
-              </button>
               <button
                 type="button"
                 onClick={handleSaveNote}

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowRight, Search, Star } from 'lucide-react';
+import { ArrowRight, ChevronDown, ChevronUp, Search, Star } from 'lucide-react';
 import { FORMULA_CATEGORIES, FORMULA_SHEET, type FormulaEntry } from '../data/formulaSheet';
 import { MathTex } from './MathTex';
 
@@ -16,6 +16,7 @@ export function FormulaSheetView({
 }: FormulaSheetViewProps) {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<(typeof FORMULA_CATEGORIES)[number]>('All');
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -29,11 +30,17 @@ export function FormulaSheetView({
       const textMatch =
         !q ||
         item.title.toLowerCase().includes(q) ||
+        item.subtopic.toLowerCase().includes(q) ||
         item.note.toLowerCase().includes(q) ||
+        item.symbols.toLowerCase().includes(q) ||
         item.category.toLowerCase().includes(q);
       return catMatch && textMatch;
     });
   }, [query, category, favoriteIds]);
+
+  const toggleDetails = (id: string) => {
+    setExpandedIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -41,10 +48,10 @@ export function FormulaSheetView({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
-              Formula Library
+              University Mathematics Formula Library
             </h2>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Topic-organized differentiation rules, partial theorems, chain rules, and vector calculus operators.
+              Complete reference across 10 university math topics with symbol explanations, validity conditions, and worked examples.
             </p>
           </div>
           <div className="relative w-full sm:w-64">
@@ -53,7 +60,7 @@ export function FormulaSheetView({
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search formulas..."
+              placeholder="Search formulas, symbols..."
               className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 dark:border-white/15 bg-slate-50 dark:bg-[#12141B] text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-[#2F7CF6]"
             />
           </div>
@@ -82,6 +89,7 @@ export function FormulaSheetView({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {filtered.map((item) => {
           const isFav = favoriteIds.includes(item.id);
+          const isExpanded = !!expandedIds[item.id];
           return (
             <div
               key={item.id}
@@ -93,15 +101,15 @@ export function FormulaSheetView({
                     <h3 className="text-base font-semibold text-slate-900 dark:text-white">
                       {item.title}
                     </h3>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                      {item.category}
-                    </span>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                      {item.category} · {item.subtopic}
+                    </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => onToggleFavorite(item.id)}
                     aria-label={isFav ? 'Remove formula from favorites' : 'Save formula to favorites'}
-                    className={`min-h-[36px] min-w-[36px] rounded-xl flex items-center justify-center transition-colors ${
+                    className={`min-h-[36px] min-w-[36px] rounded-xl flex items-center justify-center transition-colors shrink-0 ${
                       isFav
                         ? 'text-amber-500 bg-amber-500/12'
                         : 'text-slate-400 hover:text-amber-500 hover:bg-slate-100 dark:hover:bg-white/5'
@@ -118,10 +126,41 @@ export function FormulaSheetView({
                 <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
                   {item.note}
                 </p>
+
+                {isExpanded && (
+                  <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#12141B] p-3.5 space-y-2.5 text-xs">
+                    <div>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">Symbols: </span>
+                      <span className="text-slate-600 dark:text-slate-400">{item.symbols}</span>
+                    </div>
+                    <div>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">Conditions: </span>
+                      <span className="text-slate-600 dark:text-slate-400">{item.conditions}</span>
+                    </div>
+                    <div className="pt-1 border-t border-slate-200 dark:border-white/10 space-y-1">
+                      <div className="font-semibold text-[#2F7CF6]">Worked Example</div>
+                      <div className="overflow-x-auto text-slate-800 dark:text-slate-200">
+                        <MathTex tex={item.example.problemLatex} />
+                      </div>
+                      <div className="overflow-x-auto text-slate-900 dark:text-white">
+                        <MathTex tex={item.example.solutionLatex} />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {item.tryExample && (
-                <div className="pt-1 flex justify-end">
+              <div className="pt-1 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => toggleDetails(item.id)}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-[#2F7CF6]"
+                >
+                  {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  <span>{isExpanded ? 'Hide Example & Conditions' : 'Symbols, Conditions & Example'}</span>
+                </button>
+
+                {item.tryExample && (
                   <button
                     type="button"
                     onClick={() => onLoadExample(item.tryExample!)}
@@ -130,8 +169,8 @@ export function FormulaSheetView({
                     <span>Try in Calculator</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           );
         })}

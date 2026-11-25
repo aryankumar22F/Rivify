@@ -1,9 +1,13 @@
 import { useMemo, useState } from 'react';
-import { Check, FileDown, MessageSquare, Save, Sigma } from 'lucide-react';
+import { Check, FileDown, Save, Sigma } from 'lucide-react';
 import { solveTaylorSeries } from '../engine/calculus';
 import {
+  solveChangeOfVariablesIntegral,
+  solveCylindricalIntegral,
   solveDoubleIntegral,
   solveLineIntegral,
+  solvePolarIntegral,
+  solveSphericalIntegral,
   solveSurfaceIntegral,
   solveTripleIntegral,
 } from '../engine/integrals';
@@ -11,17 +15,24 @@ import type { AppSettings } from '../types';
 import { downloadSingleSolutionPdf, triggerHaptic } from '../utils/pdfReport';
 import { MathTex } from './MathTex';
 
-type SeriesIntegralMode = 'taylor' | 'double' | 'triple' | 'line' | 'surface';
+type SeriesIntegralMode =
+  | 'taylor'
+  | 'double'
+  | 'triple'
+  | 'line'
+  | 'surface'
+  | 'polar'
+  | 'cylindrical'
+  | 'spherical'
+  | 'change-vars';
 
 interface SeriesIntegralsViewProps {
   settings: AppSettings;
-  onAskAI: (ctx: { tool: string; expression: string; result: string }) => void;
   onSaveToNotebook: (note: { title: string; topic: string; content: string }) => void;
 }
 
 export function SeriesIntegralsView({
   settings,
-  onAskAI,
   onSaveToNotebook,
 }: SeriesIntegralsViewProps) {
   const [mode, setMode] = useState<SeriesIntegralMode>('taylor');
@@ -52,6 +63,22 @@ export function SeriesIntegralsView({
   const [curveY, setCurveY] = useState('sin(t)');
   const [tMin, setTMin] = useState('0');
   const [tMax, setTMax] = useState('3.141593');
+
+  // Polar / Cylindrical / Spherical state
+  const [rMin, setRMin] = useState('0');
+  const [rMax, setRMax] = useState('2');
+  const [thetaMin, setThetaMin] = useState('0');
+  const [thetaMax, setThetaMax] = useState('6.283185');
+  const [phiMin, setPhiMin] = useState('0');
+  const [phiMax, setPhiMax] = useState('3.141593');
+
+  // Change of variables (u, v) state
+  const [covXExpr, setCovXExpr] = useState('u*cos(v)');
+  const [covYExpr, setCovYExpr] = useState('u*sin(v)');
+  const [uMin, setUMin] = useState('0');
+  const [uMax, setUMax] = useState('2');
+  const [vMin, setVMin] = useState('0');
+  const [vMax, setVMax] = useState('3.141593');
 
   const [savedNote, setSavedNote] = useState(false);
 
@@ -110,6 +137,56 @@ export function SeriesIntegralsView({
         );
         return { kind: 'integral' as const, res, error: null };
       }
+      if (mode === 'polar') {
+        const res = solvePolarIntegral(
+          intExpr,
+          Number(rMin) || 0,
+          Number(rMax) || 1,
+          Number(thetaMin) || 0,
+          Number(thetaMax) || Math.PI * 2,
+          settings.angleUnit
+        );
+        return { kind: 'integral' as const, res, error: null };
+      }
+      if (mode === 'cylindrical') {
+        const res = solveCylindricalIntegral(
+          intExpr,
+          Number(rMin) || 0,
+          Number(rMax) || 1,
+          Number(thetaMin) || 0,
+          Number(thetaMax) || Math.PI * 2,
+          Number(zMin) || 0,
+          Number(zMax) || 1,
+          settings.angleUnit
+        );
+        return { kind: 'integral' as const, res, error: null };
+      }
+      if (mode === 'spherical') {
+        const res = solveSphericalIntegral(
+          intExpr,
+          Number(rMin) || 0,
+          Number(rMax) || 1,
+          Number(thetaMin) || 0,
+          Number(thetaMax) || Math.PI * 2,
+          Number(phiMin) || 0,
+          Number(phiMax) || Math.PI,
+          settings.angleUnit
+        );
+        return { kind: 'integral' as const, res, error: null };
+      }
+      if (mode === 'change-vars') {
+        const res = solveChangeOfVariablesIntegral(
+          intExpr,
+          covXExpr,
+          covYExpr,
+          Number(uMin) || 0,
+          Number(uMax) || 1,
+          Number(vMin) || 0,
+          Number(vMax) || 1,
+          settings.angleUnit
+        );
+        return { kind: 'integral' as const, res, error: null };
+      }
       const res = solveSurfaceIntegral(
         intExpr,
         surfGExpr,
@@ -150,6 +227,18 @@ export function SeriesIntegralsView({
     curveY,
     tMin,
     tMax,
+    rMin,
+    rMax,
+    thetaMin,
+    thetaMax,
+    phiMin,
+    phiMax,
+    covXExpr,
+    covYExpr,
+    uMin,
+    uMax,
+    vMin,
+    vMax,
     settings.angleUnit,
   ]);
 
@@ -159,6 +248,10 @@ export function SeriesIntegralsView({
     triple: 'Triple Integral',
     line: 'Line Integral',
     surface: 'Surface Integral',
+    polar: 'Polar Coordinates Integral',
+    cylindrical: 'Cylindrical Coordinates Integral',
+    spherical: 'Spherical Coordinates Integral',
+    'change-vars': 'Change of Variables (Jacobian)',
   };
 
   const resultPlainText =
@@ -174,10 +267,10 @@ export function SeriesIntegralsView({
         <div>
           <h2 className="text-xl font-semibold text-slate-900 dark:text-white flex items-center gap-2">
             <Sigma className="w-5 h-5 text-[#2F7CF6]" />
-            Series Expansions & Multivariable Integrals
+            Series Expansions, Integrals & Coordinate Systems
           </h2>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Compute 1D/2D Taylor & Maclaurin series or evaluate double, triple, line, and surface integrals with Gauss-Legendre quadrature.
+            Compute 1D/2D Taylor series, multiple integrals, line/surface integrals, polar/cylindrical/spherical coordinates, and Jacobian variable transformations.
           </p>
         </div>
 
@@ -187,6 +280,10 @@ export function SeriesIntegralsView({
               { id: 'taylor', label: 'Taylor & Maclaurin' },
               { id: 'double', label: 'Double ∬' },
               { id: 'triple', label: 'Triple ∭' },
+              { id: 'polar', label: 'Polar r dr dθ' },
+              { id: 'cylindrical', label: 'Cylindrical' },
+              { id: 'spherical', label: 'Spherical' },
+              { id: 'change-vars', label: 'Change of Vars J' },
               { id: 'line', label: 'Line ∫ F·dr' },
               { id: 'surface', label: 'Surface ∬ dS' },
             ] as const
@@ -199,6 +296,12 @@ export function SeriesIntegralsView({
                 if (tab.id === 'triple' && intExpr === 'x^2 + y^2') {
                   setIntExpr('x*y*z');
                 } else if (tab.id === 'surface' && intExpr === 'x*y*z') {
+                  setIntExpr('1');
+                } else if (tab.id === 'polar') {
+                  setIntExpr('x^2 + y^2');
+                } else if (tab.id === 'cylindrical') {
+                  setIntExpr('x^2 + y^2 + z');
+                } else if (tab.id === 'spherical') {
                   setIntExpr('1');
                 }
               }}
@@ -440,6 +543,194 @@ export function SeriesIntegralsView({
             </>
           )}
 
+          {(mode === 'polar' || mode === 'cylindrical' || mode === 'spherical') && (
+            <>
+              <div>
+                <label className="text-xs text-slate-500 dark:text-slate-400">
+                  Integrand {mode === 'polar' ? 'f(x, y)' : 'f(x, y, z)'} (auto-substituted)
+                </label>
+                <input
+                  type="text"
+                  value={intExpr}
+                  onChange={(e) => setIntExpr(e.target.value)}
+                  className="mt-1 w-full h-11 px-3 rounded-xl border border-slate-300 dark:border-white/20 bg-transparent font-mono text-sm text-slate-900 dark:text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {mode === 'spherical' ? 'ρ min' : 'r min'}
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={rMin}
+                    onChange={(e) => setRMin(e.target.value)}
+                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-white/20 bg-transparent font-mono text-sm tabular-nums text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {mode === 'spherical' ? 'ρ max' : 'r max'}
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={rMax}
+                    onChange={(e) => setRMax(e.target.value)}
+                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-white/20 bg-transparent font-mono text-sm tabular-nums text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500 dark:text-slate-400">θ min</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={thetaMin}
+                    onChange={(e) => setThetaMin(e.target.value)}
+                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-white/20 bg-transparent font-mono text-sm tabular-nums text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500 dark:text-slate-400">θ max</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={thetaMax}
+                    onChange={(e) => setThetaMax(e.target.value)}
+                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-white/20 bg-transparent font-mono text-sm tabular-nums text-slate-900 dark:text-white"
+                  />
+                </div>
+                {mode === 'cylindrical' && (
+                  <>
+                    <div>
+                      <label className="text-[11px] text-slate-500 dark:text-slate-400">z min</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={zMin}
+                        onChange={(e) => setZMin(e.target.value)}
+                        className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-white/20 bg-transparent font-mono text-sm tabular-nums text-slate-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-slate-500 dark:text-slate-400">z max</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={zMax}
+                        onChange={(e) => setZMax(e.target.value)}
+                        className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-white/20 bg-transparent font-mono text-sm tabular-nums text-slate-900 dark:text-white"
+                      />
+                    </div>
+                  </>
+                )}
+                {mode === 'spherical' && (
+                  <>
+                    <div>
+                      <label className="text-[11px] text-slate-500 dark:text-slate-400">φ min</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={phiMin}
+                        onChange={(e) => setPhiMin(e.target.value)}
+                        className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-white/20 bg-transparent font-mono text-sm tabular-nums text-slate-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-slate-500 dark:text-slate-400">φ max</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={phiMax}
+                        onChange={(e) => setPhiMax(e.target.value)}
+                        className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-white/20 bg-transparent font-mono text-sm tabular-nums text-slate-900 dark:text-white"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+
+          {mode === 'change-vars' && (
+            <>
+              <div>
+                <label className="text-xs text-slate-500 dark:text-slate-400">
+                  Integrand f(x, y)
+                </label>
+                <input
+                  type="text"
+                  value={intExpr}
+                  onChange={(e) => setIntExpr(e.target.value)}
+                  className="mt-1 w-full h-11 px-3 rounded-xl border border-slate-300 dark:border-white/20 bg-transparent font-mono text-sm text-slate-900 dark:text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] text-slate-500 dark:text-slate-400">x(u, v)</label>
+                  <input
+                    type="text"
+                    value={covXExpr}
+                    onChange={(e) => setCovXExpr(e.target.value)}
+                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-white/20 bg-transparent font-mono text-sm text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500 dark:text-slate-400">y(u, v)</label>
+                  <input
+                    type="text"
+                    value={covYExpr}
+                    onChange={(e) => setCovYExpr(e.target.value)}
+                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-white/20 bg-transparent font-mono text-sm text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500 dark:text-slate-400">u min</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={uMin}
+                    onChange={(e) => setUMin(e.target.value)}
+                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-white/20 bg-transparent font-mono text-sm tabular-nums text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500 dark:text-slate-400">u max</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={uMax}
+                    onChange={(e) => setUMax(e.target.value)}
+                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-white/20 bg-transparent font-mono text-sm tabular-nums text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500 dark:text-slate-400">v min</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={vMin}
+                    onChange={(e) => setVMin(e.target.value)}
+                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-white/20 bg-transparent font-mono text-sm tabular-nums text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500 dark:text-slate-400">v max</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={vMax}
+                    onChange={(e) => setVMax(e.target.value)}
+                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-white/20 bg-transparent font-mono text-sm tabular-nums text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
           {mode === 'line' && (
             <>
               <div className="grid grid-cols-2 gap-3">
@@ -523,20 +814,6 @@ export function SeriesIntegralsView({
               {titleMap[mode]}
             </h3>
             <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() =>
-                  onAskAI({
-                    tool: titleMap[mode],
-                    expression: mode === 'taylor' ? taylorExpr : mode === 'line' ? `⟨${lineP},${lineQ}⟩` : intExpr,
-                    result: resultPlainText,
-                  })
-                }
-                className="h-8 px-2.5 rounded-lg text-xs font-medium text-[#2F7CF6] hover:bg-[#2F7CF6]/10 inline-flex items-center gap-1"
-              >
-                <MessageSquare className="w-3.5 h-3.5" />
-                <span>Ask AI</span>
-              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -629,6 +906,11 @@ export function SeriesIntegralsView({
                 <span className="text-slate-800 dark:text-slate-100">
                   Numerical Integral = <strong className="text-sm">{fmt(computed.res.value)}</strong>
                 </span>
+                {computed.res.jacobianLatex && (
+                  <span className="text-slate-600 dark:text-slate-300 inline-flex items-center gap-1">
+                    Jacobian: <MathTex tex={`|J| = \\left|${computed.res.jacobianLatex}\\right|`} />
+                  </span>
+                )}
                 <span className="text-slate-500 dark:text-slate-400">
                   Est. quadrature delta: {computed.res.errorEstimate.toExponential(2)}
                 </span>

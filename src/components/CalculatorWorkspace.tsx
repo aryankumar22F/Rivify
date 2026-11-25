@@ -1,20 +1,24 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertCircle,
   ArrowRight,
   BookmarkPlus,
-  Calculator,
   Check,
   ChevronDown,
   ChevronUp,
   Copy,
   FileDown,
-  MessageSquare,
   Minus,
   PenTool,
   Plus,
   Share2,
   Sparkles,
 } from 'lucide-react';
+import {
+  CalculateActionButton,
+  ClearAllActionButton,
+  type ActionStatus,
+} from './ActionButtons';
 import {
   solveDirectionalDerivative,
   solveGradient,
@@ -58,7 +62,6 @@ interface CalculatorWorkspaceProps {
   onToggleBookmark: (id: string) => void;
   onDeleteHistory: (id: string) => void;
   onClearHistory: () => void;
-  onAskAI: (context: { tool: string; expression: string; result: string }) => void;
   onSaveToNotebook: (note: { title: string; topic: string; content: string }) => void;
   externalLoad?: {
     tool: CalcToolId;
@@ -122,7 +125,6 @@ export function CalculatorWorkspace({
   onToggleBookmark,
   onDeleteHistory,
   onClearHistory,
-  onAskAI,
   onSaveToNotebook,
   externalLoad,
 }: CalculatorWorkspaceProps) {
@@ -151,6 +153,18 @@ export function CalculatorWorkspace({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [handwritingOpen, setHandwritingOpen] = useState(false);
 
+  const [calcStatus, setCalcStatus] = useState<ActionStatus>('idle');
+  const [evalStatus, setEvalStatus] = useState<ActionStatus>('idle');
+  const [calcSuccessMsg, setCalcSuccessMsg] = useState<string | null>(null);
+  const [evalFeedback, setEvalFeedback] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [clearedFeedback, setClearedFeedback] = useState(false);
+
+  const calcLockRef = useRef(false);
+  const evalLockRef = useRef(false);
+  const calcTimerRef = useRef<number | null>(null);
+  const evalTimerRef = useRef<number | null>(null);
+  const clearTimerRef = useRef<number | null>(null);
+
   const [partialRes, setPartialRes] = useState<PartialDerivativeResult | null>(null);
   const [gradRes, setGradRes] = useState<GradientResult | null>(null);
   const [dirRes, setDirRes] = useState<DirectionalDerivativeResult | null>(null);
@@ -161,6 +175,14 @@ export function CalculatorWorkspace({
   const [graphExpr, setGraphExpr] = useState('2*x^2*y^3');
   const [graphSecondary, setGraphSecondary] = useState<string | undefined>(undefined);
   const [graphDeriv, setGraphDeriv] = useState<string | undefined>('4*x*y^3');
+
+  useEffect(() => {
+    return () => {
+      if (calcTimerRef.current) window.clearTimeout(calcTimerRef.current);
+      if (evalTimerRef.current) window.clearTimeout(evalTimerRef.current);
+      if (clearTimerRef.current) window.clearTimeout(clearTimerRef.current);
+    };
+  }, []);
 
   const liveValidation = useMemo(() => {
     if (activeTool === 'vector-field') {
@@ -188,7 +210,7 @@ export function CalculatorWorkspace({
       vecP?: string;
       vecQ?: string;
     }
-  ) => {
+  ): boolean => {
     const tool = overrides?.tool ?? activeTool;
     const activeExpr = overrides?.expr ?? expr;
     const activeVar = overrides?.variable ?? variable;
@@ -343,8 +365,106 @@ export function CalculatorWorkspace({
           });
         }
       }
+      return true;
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : 'Unable to evaluate expression');
+      return false;
+    }
+  };
+
+  const handleCalculateSubmit = async () => {
+    if (calcLockRef.current) return;
+    calcLockRef.current = true;
+    if (calcTimerRef.current) window.clearTimeout(calcTimerRef.current);
+    setClearedFeedback(false);
+    setCalcSuccessMsg(null);
+    setErrorMsg(null);
+    setCalcStatus('calculating');
+
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => {
+        window.setTimeout(resolve, 140);
+      });
+    });
+
+    const ok = runCalculation(true);
+    calcLockRef.current = false;
+
+    if (ok) {
+      setCalcStatus('success');
+      setCalcSuccessMsg('Calculation completed');
+      calcTimerRef.current = window.setTimeout(() => {
+        setCalcStatus('idle');
+        setCalcSuccessMsg(null);
+      }, 2000);
+    } else {
+      setCalcStatus('error');
+      calcTimerRef.current = window.setTimeout(() => {
+        setCalcStatus('idle');
+      }, 2200);
+    }
+  };
+
+  const handleEvaluatePoint = async () => {
+    if (evalLockRef.current) return;
+    evalLockRef.current = true;
+    if (evalTimerRef.current) window.clearTimeout(evalTimerRef.current);
+    setEvalFeedback(null);
+    setEvalStatus('calculating');
+    triggerHaptic(settings.hapticsEnabled, 10);
+
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => {
+        window.setTimeout(resolve, 140);
+      });
+    });
+
+    try {
+      if (activeTool === 'vector-field') {
+        if (!vecP.trim() || !vecQ.trim()) {
+          throw new Error('Enter P(x, y) and Q(x, y) expressions before evaluating.');
+        }
+        if (ptX === '' || ptY === '' || !Number.isFinite(Number(ptX)) || !Number.isFinite(Number(ptY))) {
+          throw new Error('Provide numeric coordinates (x, y) to evaluate.');
+        }
+      } else {
+        if (!expr.trim()) {
+          throw new Error('Enter a function f(...) before evaluating at a point.');
+        }
+        if (ptX === '' || !Number.isFinite(Number(ptX))) {
+          throw new Error('Provide a numeric x coordinate to evaluate.');
+        }
+        if (
+          (activeTool !== 'partial-derivative' || liveValidation.variables.includes('y')) &&
+          (ptY === '' || !Number.isFinite(Number(ptY)))
+        ) {
+          throw new Error('Provide a numeric y coordinate to evaluate.');
+        }
+        if (liveValidation.variables.includes('z') && (ptZ === '' || !Number.isFinite(Number(ptZ)))) {
+          throw new Error('Provide a numeric z coordinate to evaluate.');
+        }
+      }
+
+      const ok = runCalculation(false);
+      if (!ok) {
+        throw new Error('Unable to evaluate at the given point.');
+      }
+
+      setEvalStatus('success');
+      setEvalFeedback({ kind: 'success', text: 'Evaluated successfully' });
+      evalTimerRef.current = window.setTimeout(() => {
+        setEvalStatus('idle');
+        setEvalFeedback(null);
+      }, 2000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unable to evaluate at point';
+      setEvalStatus('error');
+      setEvalFeedback({ kind: 'error', text: msg });
+      evalTimerRef.current = window.setTimeout(() => {
+        setEvalStatus('idle');
+      }, 2200);
+    } finally {
+      evalLockRef.current = false;
     }
   };
 
@@ -354,6 +474,11 @@ export function CalculatorWorkspace({
   }, []);
 
   useEffect(() => {
+    setClearedFeedback(false);
+    setCalcSuccessMsg(null);
+    setEvalFeedback(null);
+    setCalcStatus('idle');
+    setEvalStatus('idle');
     if (activeTool === 'maxima-minima' && expr === '2*x^2*y^3') {
       setExpr('x^2 - y^2');
       setPtX('0');
@@ -392,19 +517,50 @@ export function CalculatorWorkspace({
   }, [externalLoad?.nonce]);
 
   const handleClear = () => {
+    triggerHaptic(settings.hapticsEnabled, 8);
+    if (calcTimerRef.current) window.clearTimeout(calcTimerRef.current);
+    if (evalTimerRef.current) window.clearTimeout(evalTimerRef.current);
+    if (clearTimerRef.current) window.clearTimeout(clearTimerRef.current);
+
     setErrorMsg(null);
+    setCalcSuccessMsg(null);
+    setEvalFeedback(null);
+    setCalcStatus('idle');
+    setEvalStatus('idle');
+    setGraphSecondary(undefined);
+    setGraphDeriv(undefined);
+    setPtX('');
+    setPtY('');
+    setPtZ('');
+
     if (activeTool === 'vector-field') {
       setVecP('');
       setVecQ('');
       setVfRes(null);
     } else {
       setExpr('');
+      if (activeTool === 'partial-derivative') {
+        setVariable('');
+        setOrder(1);
+      } else if (activeTool === 'directional-derivative') {
+        setDirX('');
+        setDirY('');
+        setDirZ('');
+      } else if (activeTool === 'linear-approximation') {
+        setTargetX('');
+        setTargetY('');
+      }
       setPartialRes(null);
       setGradRes(null);
       setDirRes(null);
       setMaxMinRes(null);
       setLinRes(null);
     }
+
+    setClearedFeedback(true);
+    clearTimerRef.current = window.setTimeout(() => {
+      setClearedFeedback(false);
+    }, 2200);
   };
 
   let activeSteps: DerivationStep[] = [];
@@ -463,7 +619,7 @@ export function CalculatorWorkspace({
     if (!copyText) return;
     triggerHaptic(settings.hapticsEnabled, 10);
     await shareSolutionText(
-      `Derivify · ${TOOL_TITLES[activeTool]}`,
+      `RIVIFY · ${TOOL_TITLES[activeTool]}`,
       `f = ${activeInputSummary}\nResult: ${copyText}`
     );
     setSharedFeedback(true);
@@ -589,7 +745,7 @@ export function CalculatorWorkspace({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            runCalculation(true);
+            void handleCalculateSubmit();
           }}
           className="rounded-3xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#23252C] p-5 sm:p-6 space-y-5"
         >
@@ -834,27 +990,40 @@ export function CalculatorWorkspace({
           {errorMsg && (
             <div
               role="alert"
-              className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-2.5 text-xs text-rose-600 dark:text-rose-300"
+              className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-2.5 text-xs text-rose-600 dark:text-rose-300 flex items-center gap-2"
             >
-              {errorMsg}
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{errorMsg}</span>
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3 pt-1">
-            <button
-              type="button"
-              onClick={handleClear}
-              className="h-12 rounded-xl border border-slate-300 dark:border-white/20 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 text-sm font-medium transition-colors"
-            >
-              Clear All
-            </button>
-            <button
-              type="submit"
-              className="h-12 rounded-xl bg-[#2F7CF6] hover:bg-[#256AE0] text-white text-sm font-semibold inline-flex items-center justify-center gap-2 transition-colors"
-            >
-              <Calculator className="w-4 h-4" />
-              <span>Calculate</span>
-            </button>
+          <div className="space-y-2 pt-1">
+            <div className="grid grid-cols-2 gap-3">
+              <ClearAllActionButton
+                label="Clear All"
+                clearedLabel="Cleared"
+                cleared={clearedFeedback}
+                onClick={handleClear}
+              />
+              <CalculateActionButton
+                type="submit"
+                label="Calculate"
+                calculatingLabel="Calculating..."
+                successLabel="Calculated"
+                status={calcStatus}
+              />
+            </div>
+
+            {(clearedFeedback || calcSuccessMsg) && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex items-center justify-end gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 px-1"
+              >
+                <Check className="w-3.5 h-3.5 shrink-0" />
+                <span>{clearedFeedback ? 'Cleared successfully' : calcSuccessMsg}</span>
+              </div>
+            )}
           </div>
         </form>
 
@@ -865,20 +1034,6 @@ export function CalculatorWorkspace({
             <div className="flex flex-wrap items-center gap-1">
               {copyText && (
                 <>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onAskAI({
-                        tool: TOOL_TITLES[activeTool],
-                        expression: activeInputSummary,
-                        result: copyText,
-                      })
-                    }
-                    className="min-h-[36px] px-2.5 rounded-lg text-[#2F7CF6] dark:text-[#7EB0FF] hover:bg-[#2F7CF6]/10 inline-flex items-center gap-1 text-xs font-medium transition-colors whitespace-nowrap"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    <span>Ask AI</span>
-                  </button>
                   <button
                     type="button"
                     onClick={handleClipToNotebook}
@@ -1174,17 +1329,36 @@ export function CalculatorWorkspace({
               )}
             </div>
 
-            <button
+            <CalculateActionButton
               type="button"
-              onClick={() => {
-                triggerHaptic(settings.hapticsEnabled, 10);
-                runCalculation(false);
-              }}
-              className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-[#323540] hover:bg-slate-200 dark:hover:bg-[#3D414F] text-xs font-semibold text-slate-800 dark:text-white transition-colors whitespace-nowrap shrink-0"
-            >
-              Evaluate
-            </button>
+              label="Evaluate"
+              calculatingLabel="Calculating..."
+              successLabel="Evaluated"
+              status={evalStatus}
+              size="sm"
+              onClick={() => void handleEvaluatePoint()}
+              className="shrink-0"
+            />
           </div>
+
+          {evalFeedback && (
+            <div
+              role={evalFeedback.kind === 'error' ? 'alert' : 'status'}
+              aria-live="polite"
+              className={`rounded-xl px-3 py-2 text-xs flex items-center gap-1.5 ${
+                evalFeedback.kind === 'error'
+                  ? 'border border-rose-500/40 bg-rose-500/10 text-rose-600 dark:text-rose-300'
+                  : 'border border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+              }`}
+            >
+              {evalFeedback.kind === 'error' ? (
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <Check className="w-3.5 h-3.5 shrink-0" />
+              )}
+              <span>{evalFeedback.text}</span>
+            </div>
+          )}
         </div>
       </div>
 

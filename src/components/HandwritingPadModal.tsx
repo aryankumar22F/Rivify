@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertCircle, Check, Eraser, Loader2, PenTool, Undo2, X } from 'lucide-react';
+import { AlertCircle, Check, Loader2, PenTool, Undo2, X } from 'lucide-react';
 import { parseExpression, toLatex, validateExpression } from '../engine/symbolic';
 import { parseApiResponse } from '../utils/apiClient';
+import { ClearAllActionButton } from './ActionButtons';
 import { MathTex } from './MathTex';
 
 interface HandwritingPadModalProps {
@@ -28,6 +29,14 @@ export function HandwritingPadModal({
   const [loading, setLoading] = useState(false);
   const [recognized, setRecognized] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [clearedPadNotice, setClearedPadNotice] = useState(false);
+  const clearTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (clearTimerRef.current) window.clearTimeout(clearTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -87,6 +96,7 @@ export function HandwritingPadModal({
     const pt = getPos(e);
     activeStrokeRef.current = [pt];
     setErrorMsg(null);
+    setClearedPadNotice(false);
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -200,26 +210,29 @@ export function HandwritingPadModal({
               <Undo2 className="w-3.5 h-3.5" />
               Undo
             </button>
-            <button
-              type="button"
+            <ClearAllActionButton
+              label="Clear"
+              clearedLabel="Cleared successfully"
+              cleared={clearedPadNotice}
+              variant="danger"
+              size="sm"
+              disabled={strokes.length === 0 && !clearedPadNotice}
               onClick={() => {
+                if (clearTimerRef.current) window.clearTimeout(clearTimerRef.current);
                 setStrokes([]);
                 setRecognized('');
                 setErrorMsg(null);
+                setClearedPadNotice(true);
+                clearTimerRef.current = window.setTimeout(() => setClearedPadNotice(false), 2000);
               }}
-              disabled={strokes.length === 0}
-              className="h-10 px-3 rounded-xl border border-slate-200 dark:border-white/15 text-xs font-medium text-slate-700 dark:text-slate-200 disabled:opacity-40 inline-flex items-center gap-1.5"
-            >
-              <Eraser className="w-3.5 h-3.5" />
-              Clear
-            </button>
+            />
           </div>
 
           <button
             type="button"
             onClick={handleRecognize}
             disabled={strokes.length === 0 || loading}
-            className="h-10 px-4 rounded-xl bg-[#2F7CF6] hover:bg-[#256AE0] disabled:opacity-40 text-white text-xs font-semibold inline-flex items-center gap-2 transition-colors"
+            className="h-10 px-4 rounded-xl bg-gradient-to-r from-[#2F7CF6] to-[#2563EB] shadow-[0_4px_12px_-2px_rgba(47,124,246,0.4)] hover:brightness-110 hover:-translate-y-0.5 active:scale-[0.96] active:translate-y-0 disabled:opacity-40 disabled:pointer-events-none text-white text-xs font-semibold inline-flex items-center gap-2 transition-all duration-150 touch-manipulation"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <PenTool className="w-4 h-4" />}
             <span>{loading ? 'Recognizing...' : 'Recognize Equation'}</span>

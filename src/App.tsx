@@ -1,26 +1,44 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Activity,
   ArrowUpRight,
+  BarChart2,
   BarChart3,
   Bell,
+  Binary,
   BookMarked,
   BookOpen,
-  Bot,
   Brain,
   Calculator,
   Compass,
   Dot,
+  FileOutput,
+  FileText,
+  Film,
+  FolderKanban,
   FunctionSquare,
+  GitBranch,
+  GitCompare,
+  GitFork,
+  GraduationCap,
   Grid3X3,
+  HardDriveDownload,
   HelpCircle,
   History,
   Layers,
+  LineChart,
   Menu,
   Mountain,
   Network,
+  Orbit,
+  PenTool,
+  Ruler,
+  Scale,
+  ScanLine,
   Settings,
   Sigma,
-  Swords,
+  Sliders,
+  Sparkles,
   TrendingUp,
   User,
   UserCheck,
@@ -29,30 +47,67 @@ import {
 } from 'lucide-react';
 import { MotionConfig, motion } from 'motion/react';
 import { AboutView } from './components/AboutView';
-import { ArenaView } from './components/ArenaView';
-import { AssistantView } from './components/AssistantView';
+import { AdvancedGeometryView } from './components/AdvancedGeometryView';
 import { CalculatorWorkspace, type CalcToolId } from './components/CalculatorWorkspace';
 import { CalculusLabView } from './components/CalculusLabView';
+import { ComplexNumbersView } from './components/ComplexNumbersView';
 import { DashboardView } from './components/DashboardView';
+import { DifferentialEquationsView } from './components/DifferentialEquationsView';
+import { DiscreteMathView } from './components/DiscreteMathView';
+import { EquationEditorView } from './components/EquationEditorView';
+import { ExamPrepView } from './components/ExamPrepView';
+import { ExportStudioView } from './components/ExportStudioView';
 import { FlashcardsView } from './components/FlashcardsView';
+import { FormulaDerivationView } from './components/FormulaDerivationView';
 import { FormulaSheetView } from './components/FormulaSheetView';
+import { FourierLaplaceView } from './components/FourierLaplaceView';
+import { GraphAnimationView } from './components/GraphAnimationView';
+import { GraphingCalculatorView } from './components/GraphingCalculatorView';
+import { LimitsContinuityView } from './components/LimitsContinuityView';
+import { LinearAlgebraView } from './components/LinearAlgebraView';
+import { MathHistoryView } from './components/MathHistoryView';
+import { MathScannerView } from './components/MathScannerView';
+import { MathSolverView } from './components/MathSolverView';
+import { MathWhiteboardView } from './components/MathWhiteboardView';
 import { MatrixOperatorsView } from './components/MatrixOperatorsView';
+import { MatrixVisualizerView } from './components/MatrixVisualizerView';
 import { NotebookView } from './components/NotebookView';
+import { NumericalMethodsView } from './components/NumericalMethodsView';
+import { OfflineModeView } from './components/OfflineModeView';
+import { OperationsResearchView } from './components/OperationsResearchView';
+import { OptimizationView } from './components/OptimizationView';
+import { ProbStatsView } from './components/ProbStatsView';
+import { QuestionPaperView } from './components/QuestionPaperView';
 import { QuizView } from './components/QuizView';
+import { ResearchWorkspaceView } from './components/ResearchWorkspaceView';
+import { RivifyBrandLockup, RivifyLogoMark } from './components/RivifyLogo';
+import { ScientificCalculatorView } from './components/ScientificCalculatorView';
 import { SeriesIntegralsView } from './components/SeriesIntegralsView';
 import { SettingsModal } from './components/SettingsModal';
+import { SmartRevisionView } from './components/SmartRevisionView';
+import { UnitConverterView } from './components/UnitConverterView';
+import { VectorTheoremsView } from './components/VectorTheoremsView';
+import { VirtualClassroomView } from './components/VirtualClassroomView';
 import { computeGamification } from './engine/gamification';
+import type { SolverMode } from './engine/solver';
 import { getTranslations } from './i18n/translations';
 import { dbGet, dbSet } from './storage/offlineDb';
 import type {
   ActivityEvent,
   AppSettings,
   CalculatorSubTab,
+  ClassroomLessonProgress,
+  ExamAttempt,
   FlashcardProgress,
   HistoryItem,
   NotebookNote,
   QuizAttempt,
+  RecentGraphSession,
+  ResearchProject,
+  SavedEquation,
+  ScientificHistoryItem,
   ToolId,
+  WhiteboardSession,
 } from './types';
 import { parseApiResponse } from './utils/apiClient';
 import { downloadCalculusPdfReport, triggerHaptic } from './utils/pdfReport';
@@ -68,18 +123,42 @@ const DEFAULT_SETTINGS: AppSettings = {
   reminderEnabled: false,
   reminderTime: '19:00',
   guestMode: false,
-  displayName: 'Derivify Scholar',
+  displayName: 'RIVIFY Scholar',
 };
 
-const STORAGE_SETTINGS_KEY = 'derivify_settings_v1';
-const STORAGE_HISTORY_KEY = 'derivify_history_v1';
-const STORAGE_QUIZ_KEY = 'derivify_quiz_attempts_v1';
-const STORAGE_ACTIVITY_KEY = 'derivify_activity_v1';
-const STORAGE_FAV_FORMULAS_KEY = 'derivify_fav_formulas_v1';
-const STORAGE_DAILY_KEY = 'derivify_daily_done_v1';
-const STORAGE_FLASHCARDS_KEY = 'derivify_flashcards_v1';
-const STORAGE_NOTEBOOK_KEY = 'derivify_notebook_v1';
-const STORAGE_USER_ID_KEY = 'derivify_user_id_v1';
+const STORAGE_SETTINGS_KEY = 'rivify_settings_v1';
+const STORAGE_HISTORY_KEY = 'rivify_history_v1';
+const STORAGE_QUIZ_KEY = 'rivify_quiz_attempts_v1';
+const STORAGE_ACTIVITY_KEY = 'rivify_activity_v1';
+const STORAGE_FAV_FORMULAS_KEY = 'rivify_fav_formulas_v1';
+const STORAGE_DAILY_KEY = 'rivify_daily_done_v1';
+const STORAGE_FLASHCARDS_KEY = 'rivify_flashcards_v1';
+const STORAGE_NOTEBOOK_KEY = 'rivify_notebook_v1';
+const STORAGE_SCI_HISTORY_KEY = 'rivify_sci_history_v1';
+const STORAGE_EXAM_ATTEMPTS_KEY = 'rivify_exam_attempts_v1';
+const STORAGE_WHITEBOARDS_KEY = 'rivify_whiteboards_v1';
+const STORAGE_SAVED_EQUATIONS_KEY = 'rivify_saved_equations_v1';
+const STORAGE_RECENT_GRAPHS_KEY = 'rivify_recent_graphs_v1';
+const STORAGE_RESEARCH_KEY = 'rivify_research_projects_v1';
+const STORAGE_CLASSROOM_KEY = 'rivify_classroom_v1';
+
+const LEGACY_KEYS = {
+  settings: 'derivify_settings_v1',
+  history: 'derivify_history_v1',
+  quiz: 'derivify_quiz_attempts_v1',
+  activity: 'derivify_activity_v1',
+  favFormulas: 'derivify_fav_formulas_v1',
+  daily: 'derivify_daily_done_v1',
+  flashcards: 'derivify_flashcards_v1',
+  notebook: 'derivify_notebook_v1',
+  sciHistory: 'derivify_sci_history_v1',
+  examAttempts: 'derivify_exam_attempts_v1',
+  whiteboards: 'derivify_whiteboards_v1',
+  savedEquations: 'derivify_saved_equations_v1',
+  recentGraphs: 'derivify_recent_graphs_v1',
+  research: 'derivify_research_projects_v1',
+  classroom: 'derivify_classroom_v1',
+} as const;
 
 const CALC_TOOL_IDS: { id: CalcToolId; icon: typeof Calculator }[] = [
   { id: 'partial-derivative', icon: FunctionSquare },
@@ -94,9 +173,9 @@ function isCalcTool(id: ToolId): id is CalcToolId {
   return CALC_TOOL_IDS.some((t) => t.id === id);
 }
 
-function loadJson<T>(key: string, fallback: T): T {
+function loadJson<T>(key: string, fallback: T, legacyKey?: string): T {
   try {
-    const raw = localStorage.getItem(key);
+    const raw = localStorage.getItem(key) ?? (legacyKey ? localStorage.getItem(legacyKey) : null);
     if (raw) return JSON.parse(raw) as T;
   } catch {
     // ignore
@@ -104,28 +183,8 @@ function loadJson<T>(key: string, fallback: T): T {
   return fallback;
 }
 
-function getOrCreateUserId(): string {
-  try {
-    const existing = localStorage.getItem(STORAGE_USER_ID_KEY);
-    if (existing && /^[a-zA-Z0-9_-]{4,64}$/.test(existing)) return existing;
-    const created = `u-${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
-    localStorage.setItem(STORAGE_USER_ID_KEY, created);
-    return created;
-  } catch {
-    return `u-${Math.random().toString(36).slice(2, 10)}`;
-  }
-}
-
 export default function App() {
-  const initialChallenge = useMemo(() => {
-    if (typeof window === 'undefined') return null;
-    const code = new URLSearchParams(window.location.search).get('challenge');
-    return code && /^[a-zA-Z0-9]{4,10}$/.test(code) ? code.toUpperCase() : null;
-  }, []);
-
-  const [activeTool, setActiveTool] = useState<ToolId>(
-    initialChallenge ? 'arena' : 'partial-derivative'
-  );
+  const [activeTool, setActiveTool] = useState<ToolId>('partial-derivative');
   const [subTab, setSubTab] = useState<CalculatorSubTab>('calculator');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -133,49 +192,84 @@ export default function App() {
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
   const [reminderBanner, setReminderBanner] = useState<string | null>(null);
-  const [userId] = useState<string>(() => getOrCreateUserId());
 
-  const [settings, setSettings] = useState<AppSettings>(() => ({
-    ...DEFAULT_SETTINGS,
-    ...loadJson<Partial<AppSettings>>(STORAGE_SETTINGS_KEY, {}),
-  }));
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    const loaded = loadJson<Partial<AppSettings>>(STORAGE_SETTINGS_KEY, {}, LEGACY_KEYS.settings);
+    const merged = { ...DEFAULT_SETTINGS, ...loaded };
+    if (merged.displayName === 'Derivify Scholar') merged.displayName = 'RIVIFY Scholar';
+    return merged;
+  });
   const [history, setHistory] = useState<HistoryItem[]>(() =>
-    loadJson<HistoryItem[]>(STORAGE_HISTORY_KEY, [])
+    loadJson<HistoryItem[]>(STORAGE_HISTORY_KEY, [], LEGACY_KEYS.history)
   );
   const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>(() =>
-    loadJson<QuizAttempt[]>(STORAGE_QUIZ_KEY, [])
+    loadJson<QuizAttempt[]>(STORAGE_QUIZ_KEY, [], LEGACY_KEYS.quiz)
   );
   const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>(() =>
-    loadJson<ActivityEvent[]>(STORAGE_ACTIVITY_KEY, [])
+    loadJson<ActivityEvent[]>(STORAGE_ACTIVITY_KEY, [], LEGACY_KEYS.activity)
   );
   const [favoriteFormulaIds, setFavoriteFormulaIds] = useState<string[]>(() =>
-    loadJson<string[]>(STORAGE_FAV_FORMULAS_KEY, [])
+    loadJson<string[]>(STORAGE_FAV_FORMULAS_KEY, [], LEGACY_KEYS.favFormulas)
   );
   const [dailyCompletedDate, setDailyCompletedDate] = useState<string | null>(() =>
-    loadJson<string | null>(STORAGE_DAILY_KEY, null)
+    loadJson<string | null>(STORAGE_DAILY_KEY, null, LEGACY_KEYS.daily)
   );
   const [flashcardProgress, setFlashcardProgress] = useState<Record<string, FlashcardProgress>>(() =>
-    loadJson<Record<string, FlashcardProgress>>(STORAGE_FLASHCARDS_KEY, {})
+    loadJson<Record<string, FlashcardProgress>>(STORAGE_FLASHCARDS_KEY, {}, LEGACY_KEYS.flashcards)
   );
   const [notebookNotes, setNotebookNotes] = useState<NotebookNote[]>(() =>
-    loadJson<NotebookNote[]>(STORAGE_NOTEBOOK_KEY, [])
+    loadJson<NotebookNote[]>(STORAGE_NOTEBOOK_KEY, [], LEGACY_KEYS.notebook)
   );
+  const [scientificHistory, setScientificHistory] = useState<ScientificHistoryItem[]>(() =>
+    loadJson<ScientificHistoryItem[]>(STORAGE_SCI_HISTORY_KEY, [], LEGACY_KEYS.sciHistory)
+  );
+  const [examAttempts, setExamAttempts] = useState<ExamAttempt[]>(() =>
+    loadJson<ExamAttempt[]>(STORAGE_EXAM_ATTEMPTS_KEY, [], LEGACY_KEYS.examAttempts)
+  );
+  const [whiteboards, setWhiteboards] = useState<WhiteboardSession[]>(() =>
+    loadJson<WhiteboardSession[]>(STORAGE_WHITEBOARDS_KEY, [], LEGACY_KEYS.whiteboards)
+  );
+  const [savedEquations, setSavedEquations] = useState<SavedEquation[]>(() =>
+    loadJson<SavedEquation[]>(STORAGE_SAVED_EQUATIONS_KEY, [], LEGACY_KEYS.savedEquations)
+  );
+  const [recentGraphs, setRecentGraphs] = useState<RecentGraphSession[]>(() =>
+    loadJson<RecentGraphSession[]>(STORAGE_RECENT_GRAPHS_KEY, [], LEGACY_KEYS.recentGraphs)
+  );
+  const [researchProjects, setResearchProjects] = useState<ResearchProject[]>(() =>
+    loadJson<ResearchProject[]>(STORAGE_RESEARCH_KEY, [], LEGACY_KEYS.research)
+  );
+  const [classroomProgress, setClassroomProgress] = useState<
+    Record<string, ClassroomLessonProgress>
+  >(() => loadJson<Record<string, ClassroomLessonProgress>>(STORAGE_CLASSROOM_KEY, {}, LEGACY_KEYS.classroom));
 
   const hydratedRef = useRef(false);
   const lastReminderDateRef = useRef<string | null>(null);
 
   const [quizJumpLevel, setQuizJumpLevel] = useState<1 | 2 | 3 | 4 | null>(null);
-  const [assistantContext, setAssistantContext] = useState<{
-    tool: string;
-    expression: string;
-    result: string;
-    nonce: number;
-  } | null>(null);
 
   const [externalLoad, setExternalLoad] = useState<{
     tool: CalcToolId;
     expr: string;
     secondary?: string;
+    nonce: number;
+  } | null>(null);
+  const [externalSolver, setExternalSolver] = useState<{
+    expr: string;
+    mode?: SolverMode;
+    nonce: number;
+  } | null>(null);
+  const [externalGraph, setExternalGraph] = useState<{
+    expr: string;
+    nonce: number;
+  } | null>(null);
+  const [externalScientific, setExternalScientific] = useState<{
+    expr: string;
+    nonce: number;
+  } | null>(null);
+  const [externalExport, setExternalExport] = useState<{
+    heading: string;
+    plainText: string;
+    latex?: string;
     nonce: number;
   } | null>(null);
 
@@ -209,14 +303,21 @@ export default function App() {
   }, []);
 
   const loadPersistedProfile = async () => {
-    const [h, q, a, f, d, fc, nb] = await Promise.all([
-      dbGet<HistoryItem[]>(STORAGE_HISTORY_KEY, []),
-      dbGet<QuizAttempt[]>(STORAGE_QUIZ_KEY, []),
-      dbGet<ActivityEvent[]>(STORAGE_ACTIVITY_KEY, []),
-      dbGet<string[]>(STORAGE_FAV_FORMULAS_KEY, []),
-      dbGet<string | null>(STORAGE_DAILY_KEY, null),
-      dbGet<Record<string, FlashcardProgress>>(STORAGE_FLASHCARDS_KEY, {}),
-      dbGet<NotebookNote[]>(STORAGE_NOTEBOOK_KEY, []),
+    const [h, q, a, f, d, fc, nb, sci, ex, wb, eq, rg, rp, cp] = await Promise.all([
+      dbGet<HistoryItem[]>(STORAGE_HISTORY_KEY, [], LEGACY_KEYS.history),
+      dbGet<QuizAttempt[]>(STORAGE_QUIZ_KEY, [], LEGACY_KEYS.quiz),
+      dbGet<ActivityEvent[]>(STORAGE_ACTIVITY_KEY, [], LEGACY_KEYS.activity),
+      dbGet<string[]>(STORAGE_FAV_FORMULAS_KEY, [], LEGACY_KEYS.favFormulas),
+      dbGet<string | null>(STORAGE_DAILY_KEY, null, LEGACY_KEYS.daily),
+      dbGet<Record<string, FlashcardProgress>>(STORAGE_FLASHCARDS_KEY, {}, LEGACY_KEYS.flashcards),
+      dbGet<NotebookNote[]>(STORAGE_NOTEBOOK_KEY, [], LEGACY_KEYS.notebook),
+      dbGet<ScientificHistoryItem[]>(STORAGE_SCI_HISTORY_KEY, [], LEGACY_KEYS.sciHistory),
+      dbGet<ExamAttempt[]>(STORAGE_EXAM_ATTEMPTS_KEY, [], LEGACY_KEYS.examAttempts),
+      dbGet<WhiteboardSession[]>(STORAGE_WHITEBOARDS_KEY, [], LEGACY_KEYS.whiteboards),
+      dbGet<SavedEquation[]>(STORAGE_SAVED_EQUATIONS_KEY, [], LEGACY_KEYS.savedEquations),
+      dbGet<RecentGraphSession[]>(STORAGE_RECENT_GRAPHS_KEY, [], LEGACY_KEYS.recentGraphs),
+      dbGet<ResearchProject[]>(STORAGE_RESEARCH_KEY, [], LEGACY_KEYS.research),
+      dbGet<Record<string, ClassroomLessonProgress>>(STORAGE_CLASSROOM_KEY, {}, LEGACY_KEYS.classroom),
     ]);
     setHistory(h);
     setQuizAttempts(q);
@@ -225,15 +326,25 @@ export default function App() {
     setDailyCompletedDate(d);
     setFlashcardProgress(fc);
     setNotebookNotes(nb);
+    setScientificHistory(sci);
+    setExamAttempts(ex);
+    setWhiteboards(wb);
+    setSavedEquations(eq);
+    setRecentGraphs(rg);
+    setResearchProjects(rp);
+    setClassroomProgress(cp);
   };
 
   // Hydrate offline IndexedDB on mount
   useEffect(() => {
     let active = true;
     async function hydrate() {
-      const s = await dbGet<AppSettings>(STORAGE_SETTINGS_KEY, DEFAULT_SETTINGS);
+      const s = await dbGet<AppSettings>(STORAGE_SETTINGS_KEY, DEFAULT_SETTINGS, LEGACY_KEYS.settings);
       if (!active) return;
       const mergedSettings = { ...DEFAULT_SETTINGS, ...s };
+      if (mergedSettings.displayName === 'Derivify Scholar') {
+        mergedSettings.displayName = 'RIVIFY Scholar';
+      }
       setSettings(mergedSettings);
       if (!mergedSettings.guestMode) {
         await loadPersistedProfile();
@@ -245,6 +356,13 @@ export default function App() {
         setDailyCompletedDate(null);
         setFlashcardProgress({});
         setNotebookNotes([]);
+        setScientificHistory([]);
+        setExamAttempts([]);
+        setWhiteboards([]);
+        setSavedEquations([]);
+        setRecentGraphs([]);
+        setResearchProjects([]);
+        setClassroomProgress({});
       }
       if (active) hydratedRef.current = true;
     }
@@ -304,6 +422,48 @@ export default function App() {
     }
   }, [notebookNotes, settings.guestMode]);
 
+  useEffect(() => {
+    if (hydratedRef.current && !settings.guestMode) {
+      void dbSet(STORAGE_SCI_HISTORY_KEY, scientificHistory);
+    }
+  }, [scientificHistory, settings.guestMode]);
+
+  useEffect(() => {
+    if (hydratedRef.current && !settings.guestMode) {
+      void dbSet(STORAGE_EXAM_ATTEMPTS_KEY, examAttempts);
+    }
+  }, [examAttempts, settings.guestMode]);
+
+  useEffect(() => {
+    if (hydratedRef.current && !settings.guestMode) {
+      void dbSet(STORAGE_WHITEBOARDS_KEY, whiteboards);
+    }
+  }, [whiteboards, settings.guestMode]);
+
+  useEffect(() => {
+    if (hydratedRef.current && !settings.guestMode) {
+      void dbSet(STORAGE_SAVED_EQUATIONS_KEY, savedEquations);
+    }
+  }, [savedEquations, settings.guestMode]);
+
+  useEffect(() => {
+    if (hydratedRef.current && !settings.guestMode) {
+      void dbSet(STORAGE_RECENT_GRAPHS_KEY, recentGraphs);
+    }
+  }, [recentGraphs, settings.guestMode]);
+
+  useEffect(() => {
+    if (hydratedRef.current && !settings.guestMode) {
+      void dbSet(STORAGE_RESEARCH_KEY, researchProjects);
+    }
+  }, [researchProjects, settings.guestMode]);
+
+  useEffect(() => {
+    if (hydratedRef.current && !settings.guestMode) {
+      void dbSet(STORAGE_CLASSROOM_KEY, classroomProgress);
+    }
+  }, [classroomProgress, settings.guestMode]);
+
   const handleSettingsChange = async (next: AppSettings) => {
     const wasGuest = settings.guestMode;
     setSettings(next);
@@ -316,6 +476,13 @@ export default function App() {
       setDailyCompletedDate(null);
       setFlashcardProgress({});
       setNotebookNotes([]);
+      setScientificHistory([]);
+      setExamAttempts([]);
+      setWhiteboards([]);
+      setSavedEquations([]);
+      setRecentGraphs([]);
+      setResearchProjects([]);
+      setClassroomProgress({});
     } else if (wasGuest && !next.guestMode) {
       // Exiting Guest Mode: restore saved profile from IndexedDB
       await loadPersistedProfile();
@@ -324,7 +491,7 @@ export default function App() {
 
   // Daily study reminder scheduler
   const fireStudyReminder = async (isTest = false): Promise<string> => {
-    const title = 'Derivify Study Reminder';
+    const title = 'RIVIFY Study Reminder';
     const body =
       gamification.todaySolved >= settings.dailyGoal
         ? `Great consistency! You've hit your ${settings.dailyGoal}-problem goal today.`
@@ -474,7 +641,7 @@ export default function App() {
 
   // Backup & Restore + Cloud Sync helpers
   const buildWorkspaceSnapshot = () => ({
-    version: 1,
+    version: 3,
     exportedAt: new Date().toISOString(),
     settings,
     history,
@@ -484,6 +651,13 @@ export default function App() {
     dailyCompletedDate,
     flashcardProgress,
     notebookNotes,
+    scientificHistory,
+    examAttempts,
+    whiteboards,
+    savedEquations,
+    recentGraphs,
+    researchProjects,
+    classroomProgress,
   });
 
   const applyWorkspaceSnapshot = (raw: unknown): string | null => {
@@ -502,6 +676,17 @@ export default function App() {
       setFlashcardProgress(data.flashcardProgress as Record<string, FlashcardProgress>);
     }
     if (Array.isArray(data.notebookNotes)) setNotebookNotes(data.notebookNotes as NotebookNote[]);
+    if (Array.isArray(data.scientificHistory)) {
+      setScientificHistory(data.scientificHistory as ScientificHistoryItem[]);
+    }
+    if (Array.isArray(data.examAttempts)) setExamAttempts(data.examAttempts as ExamAttempt[]);
+    if (Array.isArray(data.whiteboards)) setWhiteboards(data.whiteboards as WhiteboardSession[]);
+    if (Array.isArray(data.savedEquations)) setSavedEquations(data.savedEquations as SavedEquation[]);
+    if (Array.isArray(data.recentGraphs)) setRecentGraphs(data.recentGraphs as RecentGraphSession[]);
+    if (Array.isArray(data.researchProjects)) setResearchProjects(data.researchProjects as ResearchProject[]);
+    if (data.classroomProgress && typeof data.classroomProgress === 'object') {
+      setClassroomProgress(data.classroomProgress as Record<string, ClassroomLessonProgress>);
+    }
     if (data.settings && typeof data.settings === 'object') {
       setSettings((prev) => ({
         ...prev,
@@ -518,7 +703,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `derivify-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `rivify-backup-${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -636,23 +821,111 @@ export default function App() {
     recordActivity('flashcard', formulaId);
   };
 
+  const handleSaveAdvancedNote = (note: { title: string; topic: string; content: string }) => {
+    handleCreateNote(note);
+    recordActivity('calculation', note.topic);
+  };
+
+  const handleSendToSolver = (expression: string, mode?: SolverMode) => {
+    setExternalSolver({ expr: expression, mode, nonce: Date.now() });
+    setActiveTool('math-solver');
+  };
+
+  const handleSendToGraph = (expression: string) => {
+    setExternalGraph({ expr: expression, nonce: Date.now() });
+    setActiveTool('graphing-calculator');
+  };
+
+  const handleSendToScientific = (expression: string) => {
+    setExternalScientific({ expr: expression, nonce: Date.now() });
+    setActiveTool('scientific-calculator');
+  };
+
+  const handleSendToExport = (item: { heading: string; plainText: string; latex?: string }) => {
+    setExternalExport({ ...item, nonce: Date.now() });
+    setActiveTool('export-studio');
+  };
+
+  const handleRecordGraphSession = (session: RecentGraphSession) => {
+    setRecentGraphs((prev) => {
+      const filtered = prev.filter((g) => g.id !== session.id);
+      return [session, ...filtered].slice(0, 12);
+    });
+  };
+
   const topBarTitle =
     activeTool === 'quiz'
       ? t.calculusQuiz
       : activeTool === 'calculus-lab'
       ? t.calculusLab
+      : activeTool === 'scientific-calculator'
+      ? t.scientificCalculator
+      : activeTool === 'graphing-calculator'
+      ? t.graphingCalculator
+      : activeTool === 'math-solver'
+      ? t.mathSolver
+      : activeTool === 'math-scanner'
+      ? t.mathScanner
+      : activeTool === 'differential-equations'
+      ? t.differentialEquations
+      : activeTool === 'linear-algebra'
+      ? t.linearAlgebra
+      : activeTool === 'numerical-methods'
+      ? t.numericalMethods
+      : activeTool === 'probability-statistics'
+      ? t.probabilityStatistics
+      : activeTool === 'complex-numbers'
+      ? t.complexNumbers
+      : activeTool === 'discrete-math'
+      ? t.discreteMath
+      : activeTool === 'fourier-laplace'
+      ? t.fourierLaplace
+      : activeTool === 'advanced-geometry'
+      ? t.advancedGeometry
+      : activeTool === 'operations-research'
+      ? t.operationsResearch
+      : activeTool === 'math-whiteboard'
+      ? t.mathWhiteboard
+      : activeTool === 'equation-editor'
+      ? t.equationEditor
+      : activeTool === 'formula-derivation'
+      ? t.formulaDerivation
+      : activeTool === 'graph-animation'
+      ? t.graphAnimation
+      : activeTool === 'smart-revision'
+      ? t.smartRevision
+      : activeTool === 'virtual-classroom'
+      ? t.virtualClassroom
+      : activeTool === 'question-paper'
+      ? t.questionPaper
+      : activeTool === 'research-workspace'
+      ? t.researchWorkspace
+      : activeTool === 'unit-converter'
+      ? t.unitConverter
+      : activeTool === 'matrix-visualizer'
+      ? t.matrixVisualizer
+      : activeTool === 'math-history'
+      ? t.mathHistory
+      : activeTool === 'offline-mode'
+      ? t.offlineMode
+      : activeTool === 'exam-prep'
+      ? t.examPrep
+      : activeTool === 'export-studio'
+      ? t.exportStudio
+      : activeTool === 'limits-continuity'
+      ? t.limitsContinuity
+      : activeTool === 'optimization-lab'
+      ? t.optimizationLab
+      : activeTool === 'vector-theorems'
+      ? t.vectorTheorems
       : activeTool === 'matrix-operators'
       ? t.matrixOperators
       : activeTool === 'series-integrals'
       ? t.seriesIntegrals
       : activeTool === 'notebook'
       ? t.notebook
-      : activeTool === 'arena'
-      ? t.arena
       : activeTool === 'flashcards'
       ? t.flashcards
-      : activeTool === 'assistant'
-      ? t.assistant
       : activeTool === 'dashboard'
       ? t.dashboard
       : activeTool === 'formula-sheet'
@@ -665,8 +938,8 @@ export default function App() {
 
   const renderDrawerContent = () => (
     <div className="flex flex-col h-full bg-white dark:bg-[#1E1C22] text-slate-900 dark:text-[#E6E1E5]">
-      <div className="px-5 py-5 flex items-center justify-between border-b border-slate-200 dark:border-white/10">
-        <span className="text-lg font-medium font-display tracking-tight">{t.toolkit}</span>
+      <div className="px-5 py-4 flex items-center justify-between border-b border-slate-200 dark:border-white/10">
+        <RivifyBrandLockup showTagline onClick={() => handleSelectTool('dashboard')} />
         <button
           type="button"
           onClick={() => setDrawerOpen(false)}
@@ -677,7 +950,7 @@ export default function App() {
         </button>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1.5" aria-label="Calculus Toolkit">
+      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1.5" aria-label={t.toolkit}>
         {/* Highlighted Calculus Quiz */}
         <button
           type="button"
@@ -701,11 +974,53 @@ export default function App() {
           </span>
         </button>
 
-        {/* Interactive 3D Calculus Lab */}
+        <div className="px-3 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          Calculators &amp; Solvers
+        </div>
+
+        <button
+          type="button"
+          onClick={() => handleSelectTool('scientific-calculator')}
+          className={`w-full min-h-[42px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-colors ${
+            activeTool === 'scientific-calculator'
+              ? 'bg-[#2F7CF6] text-white'
+              : 'text-slate-700 dark:text-[#CAC4D0] hover:bg-slate-100 dark:hover:bg-white/5'
+          }`}
+        >
+          <Calculator className="w-4.5 h-4.5 shrink-0" />
+          <span className="truncate">{t.scientificCalculator}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSelectTool('math-solver')}
+          className={`w-full min-h-[42px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-colors ${
+            activeTool === 'math-solver'
+              ? 'bg-[#2F7CF6] text-white'
+              : 'text-slate-700 dark:text-[#CAC4D0] hover:bg-slate-100 dark:hover:bg-white/5'
+          }`}
+        >
+          <Sparkles className="w-4.5 h-4.5 shrink-0" />
+          <span className="truncate">{t.mathSolver}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSelectTool('graphing-calculator')}
+          className={`w-full min-h-[42px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-colors ${
+            activeTool === 'graphing-calculator'
+              ? 'bg-[#2F7CF6] text-white'
+              : 'text-slate-700 dark:text-[#CAC4D0] hover:bg-slate-100 dark:hover:bg-white/5'
+          }`}
+        >
+          <LineChart className="w-4.5 h-4.5 shrink-0" />
+          <span className="truncate">{t.graphingCalculator}</span>
+        </button>
+
         <button
           type="button"
           onClick={() => handleSelectTool('calculus-lab')}
-          className={`w-full min-h-[44px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-colors ${
+          className={`w-full min-h-[42px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-colors ${
             activeTool === 'calculus-lab'
               ? 'bg-[#2F7CF6] text-white'
               : 'text-slate-700 dark:text-[#CAC4D0] hover:bg-slate-100 dark:hover:bg-white/5'
@@ -715,80 +1030,37 @@ export default function App() {
           <span className="truncate">{t.calculusLab}</span>
         </button>
 
-        {/* Formula Flashcards */}
         <button
           type="button"
-          onClick={() => handleSelectTool('flashcards')}
-          className={`w-full min-h-[44px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-colors ${
-            activeTool === 'flashcards'
+          onClick={() => handleSelectTool('math-scanner')}
+          className={`w-full min-h-[42px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-colors ${
+            activeTool === 'math-scanner'
               ? 'bg-[#2F7CF6] text-white'
               : 'text-slate-700 dark:text-[#CAC4D0] hover:bg-slate-100 dark:hover:bg-white/5'
           }`}
         >
-          <Brain className="w-4.5 h-4.5 shrink-0" />
-          <span className="truncate">{t.flashcards}</span>
+          <ScanLine className="w-4.5 h-4.5 shrink-0" />
+          <span className="truncate">{t.mathScanner}</span>
         </button>
 
-        {/* Math Notebook */}
-        <button
-          type="button"
-          onClick={() => handleSelectTool('notebook')}
-          className={`w-full min-h-[44px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-colors ${
-            activeTool === 'notebook'
-              ? 'bg-[#2F7CF6] text-white'
-              : 'text-slate-700 dark:text-[#CAC4D0] hover:bg-slate-100 dark:hover:bg-white/5'
-          }`}
-        >
-          <BookMarked className="w-4.5 h-4.5 shrink-0" />
-          <span className="truncate">{t.notebook}</span>
-        </button>
+        <div className="my-2 border-t border-slate-200 dark:border-white/10" />
+        <div className="px-3 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          Engineering Math Labs
+        </div>
 
-        {/* Challenges & Leaderboard */}
-        <button
-          type="button"
-          onClick={() => handleSelectTool('arena')}
-          className={`w-full min-h-[44px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-colors ${
-            activeTool === 'arena'
-              ? 'bg-[#2F7CF6] text-white'
-              : 'text-slate-700 dark:text-[#CAC4D0] hover:bg-slate-100 dark:hover:bg-white/5'
-          }`}
-        >
-          <Swords className="w-4.5 h-4.5 shrink-0" />
-          <span className="truncate">{t.arena}</span>
-        </button>
-
-        {/* AI Calculus Assistant */}
-        <button
-          type="button"
-          onClick={() => handleSelectTool('assistant')}
-          className={`w-full min-h-[44px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-colors ${
-            activeTool === 'assistant'
-              ? 'bg-[#2F7CF6] text-white'
-              : 'text-slate-700 dark:text-[#CAC4D0] hover:bg-slate-100 dark:hover:bg-white/5'
-          }`}
-        >
-          <Bot className="w-4.5 h-4.5 shrink-0" />
-          <span className="truncate">{t.assistant}</span>
-        </button>
-
-        {/* Learning Dashboard */}
-        <button
-          type="button"
-          onClick={() => handleSelectTool('dashboard')}
-          className={`w-full min-h-[44px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-colors ${
-            activeTool === 'dashboard'
-              ? 'bg-[#2F7CF6] text-white'
-              : 'text-slate-700 dark:text-[#CAC4D0] hover:bg-slate-100 dark:hover:bg-white/5'
-          }`}
-        >
-          <BarChart3 className="w-4.5 h-4.5 shrink-0" />
-          <span className="truncate">{t.dashboard}</span>
-        </button>
-
-        <div className="my-2.5 border-t border-slate-200 dark:border-white/10" />
-
-        {/* 6 Core Multivariable Tools */}
-        {localizedCalcTools.map((item) => {
+        {(
+          [
+            { id: 'differential-equations', label: t.differentialEquations, icon: GitBranch },
+            { id: 'linear-algebra', label: t.linearAlgebra, icon: Grid3X3 },
+            { id: 'numerical-methods', label: t.numericalMethods, icon: Binary },
+            { id: 'probability-statistics', label: t.probabilityStatistics, icon: BarChart2 },
+            { id: 'complex-numbers', label: t.complexNumbers, icon: Compass },
+            { id: 'discrete-math', label: t.discreteMath, icon: Network },
+            { id: 'fourier-laplace', label: t.fourierLaplace, icon: Activity },
+            { id: 'advanced-geometry', label: t.advancedGeometry, icon: Compass },
+            { id: 'operations-research', label: t.operationsResearch, icon: Sliders },
+          ] as const
+        ).map((item) => {
           const Icon = item.icon;
           const isActive = activeTool === item.id;
           return (
@@ -796,7 +1068,7 @@ export default function App() {
               key={item.id}
               type="button"
               onClick={() => handleSelectTool(item.id)}
-              className={`w-full min-h-[44px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-colors ${
+              className={`w-full min-h-[42px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-colors ${
                 isActive
                   ? 'bg-[#2F7CF6]/15 dark:bg-[#4A4458]/70 text-[#2F7CF6] dark:text-[#E8DEF8]'
                   : 'text-slate-700 dark:text-[#CAC4D0] hover:bg-slate-100 dark:hover:bg-white/5'
@@ -808,61 +1080,135 @@ export default function App() {
           );
         })}
 
-        {/* Advanced Operators & Integrals */}
-        <button
-          type="button"
-          onClick={() => handleSelectTool('matrix-operators')}
-          className={`w-full min-h-[44px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-colors ${
-            activeTool === 'matrix-operators'
-              ? 'bg-[#2F7CF6]/15 dark:bg-[#4A4458]/70 text-[#2F7CF6] dark:text-[#E8DEF8]'
-              : 'text-slate-700 dark:text-[#CAC4D0] hover:bg-slate-100 dark:hover:bg-white/5'
-          }`}
-        >
-          <Grid3X3 className="w-4.5 h-4.5 shrink-0" />
-          <span className="truncate">{t.matrixOperators}</span>
-        </button>
+        <div className="my-2 border-t border-slate-200 dark:border-white/10" />
+        <div className="px-3 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          Multivariable Calculus
+        </div>
 
-        <button
-          type="button"
-          onClick={() => handleSelectTool('series-integrals')}
-          className={`w-full min-h-[44px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-colors ${
-            activeTool === 'series-integrals'
-              ? 'bg-[#2F7CF6]/15 dark:bg-[#4A4458]/70 text-[#2F7CF6] dark:text-[#E8DEF8]'
-              : 'text-slate-700 dark:text-[#CAC4D0] hover:bg-slate-100 dark:hover:bg-white/5'
-          }`}
-        >
-          <Sigma className="w-4.5 h-4.5 shrink-0" />
-          <span className="truncate">{t.seriesIntegrals}</span>
-        </button>
+        {/* 6 Core Multivariable Tools */}
+        {localizedCalcTools.map((item) => {
+          const Icon = item.icon;
+          const isActive = activeTool === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => handleSelectTool(item.id)}
+              className={`w-full min-h-[42px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-[#2F7CF6]/15 dark:bg-[#4A4458]/70 text-[#2F7CF6] dark:text-[#E8DEF8]'
+                  : 'text-slate-700 dark:text-[#CAC4D0] hover:bg-slate-100 dark:hover:bg-white/5'
+              }`}
+            >
+              <Icon className="w-4.5 h-4.5 shrink-0" />
+              <span className="truncate">{item.label}</span>
+            </button>
+          );
+        })}
 
-        <div className="my-2.5 border-t border-slate-200 dark:border-white/10" />
+        {/* University Calculus Modules */}
+        {(
+          [
+            { id: 'limits-continuity', label: t.limitsContinuity, icon: GitFork },
+            { id: 'optimization-lab', label: t.optimizationLab, icon: Scale },
+            { id: 'vector-theorems', label: t.vectorTheorems, icon: Orbit },
+            { id: 'matrix-operators', label: t.matrixOperators, icon: Grid3X3 },
+            { id: 'series-integrals', label: t.seriesIntegrals, icon: Sigma },
+          ] as const
+        ).map((item) => {
+          const Icon = item.icon;
+          const isActive = activeTool === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => handleSelectTool(item.id)}
+              className={`w-full min-h-[42px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-[#2F7CF6]/15 dark:bg-[#4A4458]/70 text-[#2F7CF6] dark:text-[#E8DEF8]'
+                  : 'text-slate-700 dark:text-[#CAC4D0] hover:bg-slate-100 dark:hover:bg-white/5'
+              }`}
+            >
+              <Icon className="w-4.5 h-4.5 shrink-0" />
+              <span className="truncate">{item.label}</span>
+            </button>
+          );
+        })}
 
-        {/* Formula Library & About */}
-        <button
-          type="button"
-          onClick={() => handleSelectTool('formula-sheet')}
-          className={`w-full min-h-[44px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-colors ${
-            activeTool === 'formula-sheet'
-              ? 'bg-[#2F7CF6]/15 dark:bg-[#4A4458]/70 text-[#2F7CF6] dark:text-[#E8DEF8]'
-              : 'text-slate-700 dark:text-[#CAC4D0] hover:bg-slate-100 dark:hover:bg-white/5'
-          }`}
-        >
-          <BookOpen className="w-4.5 h-4.5 shrink-0" />
-          <span className="truncate">{t.formulaLibrary}</span>
-        </button>
+        <div className="my-2 border-t border-slate-200 dark:border-white/10" />
+        <div className="px-3 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          Interactive Workspace
+        </div>
 
-        <button
-          type="button"
-          onClick={() => handleSelectTool('about')}
-          className={`w-full min-h-[44px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-colors ${
-            activeTool === 'about'
-              ? 'bg-[#2F7CF6]/15 dark:bg-[#4A4458]/70 text-[#2F7CF6] dark:text-[#E8DEF8]'
-              : 'text-slate-700 dark:text-[#CAC4D0] hover:bg-slate-100 dark:hover:bg-white/5'
-          }`}
-        >
-          <User className="w-4.5 h-4.5 shrink-0" />
-          <span className="truncate">{t.aboutDeveloper}</span>
-        </button>
+        {(
+          [
+            { id: 'math-whiteboard', label: t.mathWhiteboard, icon: PenTool },
+            { id: 'equation-editor', label: t.equationEditor, icon: Sigma },
+            { id: 'formula-derivation', label: t.formulaDerivation, icon: GitCompare },
+            { id: 'graph-animation', label: t.graphAnimation, icon: Film },
+            { id: 'matrix-visualizer', label: t.matrixVisualizer, icon: Grid3X3 },
+            { id: 'unit-converter', label: t.unitConverter, icon: Ruler },
+          ] as const
+        ).map((item) => {
+          const Icon = item.icon;
+          const isActive = activeTool === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => handleSelectTool(item.id)}
+              className={`w-full min-h-[42px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-[#2F7CF6] text-white'
+                  : 'text-slate-700 dark:text-[#CAC4D0] hover:bg-slate-100 dark:hover:bg-white/5'
+              }`}
+            >
+              <Icon className="w-4.5 h-4.5 shrink-0" />
+              <span className="truncate">{item.label}</span>
+            </button>
+          );
+        })}
+
+        <div className="my-2 border-t border-slate-200 dark:border-white/10" />
+        <div className="px-3 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          Learning, Research &amp; Utilities
+        </div>
+
+        {(
+          [
+            { id: 'virtual-classroom', label: t.virtualClassroom, icon: GraduationCap },
+            { id: 'smart-revision', label: t.smartRevision, icon: Brain },
+            { id: 'exam-prep', label: t.examPrep, icon: GraduationCap },
+            { id: 'question-paper', label: t.questionPaper, icon: FileText },
+            { id: 'research-workspace', label: t.researchWorkspace, icon: FolderKanban },
+            { id: 'flashcards', label: t.flashcards, icon: Brain },
+            { id: 'notebook', label: t.notebook, icon: BookMarked },
+            { id: 'math-history', label: t.mathHistory, icon: History },
+            { id: 'export-studio', label: t.exportStudio, icon: FileOutput },
+            { id: 'dashboard', label: t.dashboard, icon: BarChart3 },
+            { id: 'formula-sheet', label: t.formulaLibrary, icon: BookOpen },
+            { id: 'offline-mode', label: t.offlineMode, icon: HardDriveDownload },
+            { id: 'about', label: t.aboutDeveloper, icon: User },
+          ] as const
+        ).map((item) => {
+          const Icon = item.icon;
+          const isActive = activeTool === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => handleSelectTool(item.id)}
+              className={`w-full min-h-[42px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-[#2F7CF6] text-white'
+                  : 'text-slate-700 dark:text-[#CAC4D0] hover:bg-slate-100 dark:hover:bg-white/5'
+              }`}
+            >
+              <Icon className="w-4.5 h-4.5 shrink-0" />
+              <span className="truncate">{item.label}</span>
+            </button>
+          );
+        })}
       </nav>
     </div>
   );
@@ -895,10 +1241,18 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setDrawerOpen(true)}
-                aria-label="Open Calculus Toolkit drawer"
+                aria-label="Open RIVIFY navigation menu"
                 className="lg:hidden min-h-[44px] min-w-[44px] -ml-2 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
               >
                 <Menu className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectTool('dashboard')}
+                aria-label="RIVIFY Home"
+                className="shrink-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F7CF6] hover:scale-105 transition-transform"
+              >
+                <RivifyLogoMark size={28} />
               </button>
               <h1 className="text-lg font-medium font-display text-slate-900 dark:text-white truncate">
                 {topBarTitle}
@@ -999,10 +1353,6 @@ export default function App() {
                   onToggleBookmark={handleToggleBookmark}
                   onDeleteHistory={handleDeleteHistory}
                   onClearHistory={handleClearHistory}
-                  onAskAI={(ctx) => {
-                    setAssistantContext({ ...ctx, nonce: Date.now() });
-                    setActiveTool('assistant');
-                  }}
                   onSaveToNotebook={(note) => {
                     handleCreateNote(note);
                   }}
@@ -1010,29 +1360,313 @@ export default function App() {
                 />
               )}
 
+              {activeTool === 'scientific-calculator' && (
+                <ScientificCalculatorView
+                  settings={settings}
+                  history={scientificHistory}
+                  externalExpr={externalScientific}
+                  onSaveResult={(item) => {
+                    setScientificHistory((prev) => [item, ...prev].slice(0, 60));
+                    recordActivity('calculation', 'Scientific Calculator');
+                  }}
+                  onClearHistory={() => setScientificHistory([])}
+                  onSendToSolver={(exprText) => handleSendToSolver(exprText)}
+                  onSendToGraph={(exprText) => handleSendToGraph(exprText)}
+                  onSaveToNotebook={handleSaveAdvancedNote}
+                  onSendToExport={handleSendToExport}
+                />
+              )}
+
+              {activeTool === 'math-solver' && (
+                <MathSolverView
+                  settings={settings}
+                  externalInput={externalSolver}
+                  onSaveToNotebook={handleSaveAdvancedNote}
+                />
+              )}
+
+              {activeTool === 'graphing-calculator' && (
+                <GraphingCalculatorView
+                  settings={settings}
+                  externalGraph={externalGraph}
+                  onRecordGraphSession={handleRecordGraphSession}
+                />
+              )}
+
+              {activeTool === 'math-scanner' && (
+                <MathScannerView
+                  onSendToSolver={(exprText) => handleSendToSolver(exprText)}
+                  onSendToGraph={(exprText) => handleSendToGraph(exprText)}
+                  onSendToScientific={(exprText) => handleSendToScientific(exprText)}
+                  onSaveToNotebook={handleSaveAdvancedNote}
+                />
+              )}
+
+              {activeTool === 'differential-equations' && (
+                <DifferentialEquationsView
+                  settings={settings}
+                  onSaveToNotebook={handleSaveAdvancedNote}
+                />
+              )}
+
+              {activeTool === 'linear-algebra' && (
+                <LinearAlgebraView
+                  settings={settings}
+                  onSaveToNotebook={handleSaveAdvancedNote}
+                />
+              )}
+
+              {activeTool === 'numerical-methods' && (
+                <NumericalMethodsView
+                  settings={settings}
+                  onSaveToNotebook={handleSaveAdvancedNote}
+                />
+              )}
+
+              {activeTool === 'probability-statistics' && (
+                <ProbStatsView
+                  settings={settings}
+                  onSaveToNotebook={handleSaveAdvancedNote}
+                />
+              )}
+
+              {activeTool === 'complex-numbers' && (
+                <ComplexNumbersView
+                  settings={settings}
+                  onSaveToNotebook={handleSaveAdvancedNote}
+                />
+              )}
+
+              {activeTool === 'discrete-math' && (
+                <DiscreteMathView
+                  settings={settings}
+                  onSaveToNotebook={handleSaveAdvancedNote}
+                />
+              )}
+
+              {activeTool === 'fourier-laplace' && (
+                <FourierLaplaceView
+                  settings={settings}
+                  onSaveToNotebook={handleSaveAdvancedNote}
+                />
+              )}
+
+              {activeTool === 'advanced-geometry' && (
+                <AdvancedGeometryView
+                  settings={settings}
+                  onSaveToNotebook={handleSaveAdvancedNote}
+                />
+              )}
+
+              {activeTool === 'operations-research' && (
+                <OperationsResearchView
+                  settings={settings}
+                  onSaveToNotebook={handleSaveAdvancedNote}
+                />
+              )}
+
+              {activeTool === 'math-whiteboard' && (
+                <MathWhiteboardView
+                  settings={settings}
+                  sessions={whiteboards}
+                  onSaveSession={(sess) => {
+                    setWhiteboards((prev) => {
+                      const exists = prev.some((x) => x.id === sess.id);
+                      return exists
+                        ? prev.map((x) => (x.id === sess.id ? sess : x))
+                        : [sess, ...prev];
+                    });
+                    recordActivity('calculation', 'Math Whiteboard');
+                  }}
+                  onDeleteSession={(id) =>
+                    setWhiteboards((prev) => prev.filter((x) => x.id !== id))
+                  }
+                />
+              )}
+
+              {activeTool === 'equation-editor' && (
+                <EquationEditorView
+                  settings={settings}
+                  savedEquations={savedEquations}
+                  onSaveEquation={(eq) => {
+                    setSavedEquations((prev) => [eq, ...prev].slice(0, 60));
+                    recordActivity('calculation', 'Equation Editor');
+                  }}
+                  onDeleteEquation={(id) =>
+                    setSavedEquations((prev) => prev.filter((x) => x.id !== id))
+                  }
+                  onSaveToNotebook={handleSaveAdvancedNote}
+                  onSendToExport={handleSendToExport}
+                />
+              )}
+
+              {activeTool === 'formula-derivation' && (
+                <FormulaDerivationView
+                  settings={settings}
+                  onSaveToNotebook={handleSaveAdvancedNote}
+                  onSendToExport={handleSendToExport}
+                />
+              )}
+
+              {activeTool === 'graph-animation' && (
+                <GraphAnimationView
+                  settings={settings}
+                  onRecordGraphSession={handleRecordGraphSession}
+                />
+              )}
+
+              {activeTool === 'smart-revision' && (
+                <SmartRevisionView
+                  settings={settings}
+                  flashcardProgress={flashcardProgress}
+                  quizAttempts={quizAttempts}
+                  examAttempts={examAttempts}
+                  onRateCard={handleRateFlashcard}
+                  onOpenFlashcards={() => setActiveTool('flashcards')}
+                  onPracticeLevel={(lvl) => {
+                    setQuizJumpLevel(lvl);
+                    setActiveTool('quiz');
+                  }}
+                  onUpdateReminder={(enabled, time) =>
+                    void handleSettingsChange({
+                      ...settings,
+                      reminderEnabled: enabled,
+                      reminderTime: time,
+                    })
+                  }
+                />
+              )}
+
+              {activeTool === 'virtual-classroom' && (
+                <VirtualClassroomView
+                  settings={settings}
+                  progressMap={classroomProgress}
+                  onUpdateProgress={(lessonId, prog) => {
+                    setClassroomProgress((prev) => ({ ...prev, [lessonId]: prog }));
+                    recordActivity('quiz', 'Virtual Classroom');
+                  }}
+                />
+              )}
+
+              {activeTool === 'question-paper' && (
+                <QuestionPaperView authorName={settings.displayName} />
+              )}
+
+              {activeTool === 'research-workspace' && (
+                <ResearchWorkspaceView
+                  authorName={settings.displayName}
+                  projects={researchProjects}
+                  history={history}
+                  recentGraphs={recentGraphs}
+                  onSaveProject={(proj) => {
+                    setResearchProjects((prev) => {
+                      const exists = prev.some((x) => x.id === proj.id);
+                      return exists
+                        ? prev.map((x) => (x.id === proj.id ? proj : x))
+                        : [proj, ...prev];
+                    });
+                  }}
+                  onDeleteProject={(id) =>
+                    setResearchProjects((prev) => prev.filter((x) => x.id !== id))
+                  }
+                />
+              )}
+
+              {activeTool === 'unit-converter' && <UnitConverterView />}
+
+              {activeTool === 'matrix-visualizer' && (
+                <MatrixVisualizerView settings={settings} />
+              )}
+
+              {activeTool === 'math-history' && (
+                <MathHistoryView
+                  history={history}
+                  scientificHistory={scientificHistory}
+                  onReopenSymbolic={(item) => {
+                    setActiveTool(item.tool);
+                    setSubTab('calculator');
+                    setExternalLoad({
+                      tool: item.tool,
+                      expr: item.expression,
+                      secondary: item.secondaryInput,
+                      nonce: Date.now(),
+                    });
+                  }}
+                  onSendToSolver={(exprText) => handleSendToSolver(exprText)}
+                  onToggleBookmark={handleToggleBookmark}
+                  onDeleteSymbolic={handleDeleteHistory}
+                  onClearScientific={() => setScientificHistory([])}
+                />
+              )}
+
+              {activeTool === 'offline-mode' && (
+                <OfflineModeView
+                  isOnline={isOnline}
+                  onExportBackup={handleExportBackup}
+                  onCloudPush={handleCloudPush}
+                  localCounts={{
+                    calculations: history.length + scientificHistory.length,
+                    notes: notebookNotes.length,
+                    whiteboards: whiteboards.length,
+                    equations: savedEquations.length,
+                    researchProjects: researchProjects.length,
+                  }}
+                />
+              )}
+
+              {activeTool === 'exam-prep' && (
+                <ExamPrepView
+                  examAttempts={examAttempts}
+                  onRecordExamAttempt={(att) => {
+                    setExamAttempts((prev) => [att, ...prev].slice(0, 40));
+                    recordActivity('mock', att.topic);
+                  }}
+                />
+              )}
+
+              {activeTool === 'export-studio' && (
+                <ExportStudioView
+                  authorName={settings.displayName}
+                  history={history}
+                  scientificHistory={scientificHistory}
+                  notes={notebookNotes}
+                  examAttempts={examAttempts}
+                  externalItem={externalExport}
+                />
+              )}
+
+              {activeTool === 'limits-continuity' && (
+                <LimitsContinuityView
+                  settings={settings}
+                  onSaveToNotebook={handleSaveAdvancedNote}
+                />
+              )}
+
+              {activeTool === 'optimization-lab' && (
+                <OptimizationView
+                  settings={settings}
+                  onSaveToNotebook={handleSaveAdvancedNote}
+                />
+              )}
+
+              {activeTool === 'vector-theorems' && (
+                <VectorTheoremsView
+                  settings={settings}
+                  onSaveToNotebook={handleSaveAdvancedNote}
+                />
+              )}
+
               {activeTool === 'matrix-operators' && (
                 <MatrixOperatorsView
                   settings={settings}
-                  onAskAI={(ctx) => {
-                    setAssistantContext({ ...ctx, nonce: Date.now() });
-                    setActiveTool('assistant');
-                  }}
-                  onSaveToNotebook={(note) => {
-                    handleCreateNote(note);
-                  }}
+                  onSaveToNotebook={handleSaveAdvancedNote}
                 />
               )}
 
               {activeTool === 'series-integrals' && (
                 <SeriesIntegralsView
                   settings={settings}
-                  onAskAI={(ctx) => {
-                    setAssistantContext({ ...ctx, nonce: Date.now() });
-                    setActiveTool('assistant');
-                  }}
-                  onSaveToNotebook={(note) => {
-                    handleCreateNote(note);
-                  }}
+                  onSaveToNotebook={handleSaveAdvancedNote}
                 />
               )}
 
@@ -1078,29 +1712,20 @@ export default function App() {
                 />
               )}
 
-              {activeTool === 'arena' && (
-                <ArenaView
-                  displayName={settings.displayName || 'Derivify Scholar'}
-                  userId={userId}
-                  gamification={gamification}
-                  quizAttempts={quizAttempts}
-                  totalProblemsSolved={history.length + quizAttempts.length}
-                  initialChallengeCode={initialChallenge}
-                  hapticsEnabled={settings.hapticsEnabled}
-                  onRecordAttempt={handleRecordAttempt}
-                />
-              )}
-
-              {activeTool === 'assistant' && (
-                <AssistantView initialContext={assistantContext} />
-              )}
-
               {activeTool === 'dashboard' && (
                 <DashboardView
                   history={history}
+                  scientificHistory={scientificHistory}
+                  examAttempts={examAttempts}
                   quizAttempts={quizAttempts}
                   activityEvents={activityEvents}
                   favoriteFormulaIds={favoriteFormulaIds}
+                  flashcardProgress={flashcardProgress}
+                  whiteboards={whiteboards}
+                  researchProjects={researchProjects}
+                  recentGraphs={recentGraphs}
+                  savedEquations={savedEquations}
+                  classroomProgress={classroomProgress}
                   gamification={gamification}
                   dailyGoal={settings.dailyGoal}
                   onPracticeTopic={(lvl) => {
@@ -1112,6 +1737,17 @@ export default function App() {
                     setActiveTool('quiz');
                   }}
                   onOpenFlashcards={() => setActiveTool('flashcards')}
+                  onOpenTool={(tool) => handleSelectTool(tool)}
+                  onReopenCalculation={(item) => {
+                    setActiveTool(item.tool);
+                    setSubTab('calculator');
+                    setExternalLoad({
+                      tool: item.tool,
+                      expr: item.expression,
+                      secondary: item.secondaryInput,
+                      nonce: Date.now(),
+                    });
+                  }}
                   onDownloadPdf={() => {
                     triggerHaptic(settings.hapticsEnabled, 14);
                     downloadCalculusPdfReport(history, quizAttempts, gamification);

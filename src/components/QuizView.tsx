@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Clock,
   Dices,
+  History,
   RotateCcw,
   Sparkles,
   Target,
@@ -21,6 +22,7 @@ import {
   getDailyChallengeQuestion,
   type AssessmentTopic,
 } from '../engine/problemGenerator';
+import { evaluateAST, parseExpression } from '../engine/symbolic';
 import type { QuizAttempt, QuizQuestion } from '../types';
 import { triggerHaptic } from '../utils/pdfReport';
 import { MathTex } from './MathTex';
@@ -46,7 +48,7 @@ interface QuizViewProps {
   onCompleteMock?: () => void;
 }
 
-const MOCK_DURATION_SECONDS = 10 * 60; // 10 minutes
+const MOCK_DURATION_SECONDS = 10 * 60;
 
 function shuffleQuestions(list: QuizQuestion[]): QuizQuestion[] {
   const copy = [...list];
@@ -61,6 +63,33 @@ function formatTimer(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+function checkShortAnswer(q: QuizQuestion, rawInput: string): boolean {
+  const trimmed = rawInput.trim();
+  if (!trimmed) return false;
+  const normalized = trimmed.replace(/\s+/g, '').toLowerCase();
+
+  if (q.acceptedAnswers?.some((a) => a.replace(/\s+/g, '').toLowerCase() === normalized)) {
+    return true;
+  }
+
+  // Evaluate user expression/fraction numerically
+  try {
+    const ast = parseExpression(trimmed);
+    const val = evaluateAST(ast, { x: 1.5, y: 0.7 }, 'rad');
+    if (q.numericAnswer !== undefined && Number.isFinite(val)) {
+      return Math.abs(val - q.numericAnswer) <= (q.tolerance ?? 1e-2);
+    }
+  } catch {
+    // ignore parse failure
+  }
+
+  const num = Number(trimmed);
+  if (q.numericAnswer !== undefined && Number.isFinite(num)) {
+    return Math.abs(num - q.numericAnswer) <= (q.tolerance ?? 1e-2);
+  }
+  return false;
 }
 
 export function QuizView({
@@ -81,20 +110,18 @@ export function QuizView({
   const [sessionQuestions, setSessionQuestions] = useState<QuizQuestion[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
-  const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [shortInput, setShortInput] = useState('');
+  const [shortSubmitted, setShortSubmitted] = useState(false);
+  const [resultsMap, setResultsMap] = useState<Record<string, boolean>>({});
   const [finished, setFinished] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   const [secondsLeft, setSecondsLeft] = useState(MOCK_DURATION_SECONDS);
   const [timedOut, setTimedOut] = useState(false);
-
-  // Adaptive difficulty live state
   const [adaptiveLevel, setAdaptiveLevel] = useState<1 | 2 | 3 | 4>(2);
   const [adaptiveStreak, setAdaptiveStreak] = useState(0);
 
-  const startQuiz = (
-    lvl: DifficultySelection,
-    sourceOverride?: 'curated' | 'generated'
-  ) => {
+  const startQuiz = (lvl: DifficultySelection, sourceOverride?: 'curated' | 'generated') => {
     const src = sourceOverride ?? practiceSource;
     let pool: QuizQuestion[];
 
@@ -121,7 +148,9 @@ export function QuizView({
     setSessionQuestions(pool);
     setCurrentIdx(0);
     setSelectedOption(null);
-    setAnswers({});
+    setShortInput('');
+    setShortSubmitted(false);
+    setResultsMap({});
     setFinished(false);
     setTimedOut(false);
     setSecondsLeft(MOCK_DURATION_SECONDS);
@@ -135,7 +164,6 @@ export function QuizView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialLevel]);
 
-  // Countdown timer when running a Timed Mock Test
   useEffect(() => {
     if (selectedLevel !== 'mock' || finished) return;
     const timer = window.setInterval(() => {
@@ -158,17 +186,12 @@ export function QuizView({
   const currentQuestion = sessionQuestions[currentIdx];
 
   const score = useMemo(() => {
-    return sessionQuestions.reduce((acc, q) => {
-      return acc + (answers[q.id] === q.correctIndex ? 1 : 0);
-    }, 0);
-  }, [sessionQuestions, answers]);
+    return sessionQuestions.reduce((acc, q) => acc + (resultsMap[q.id] ? 1 : 0), 0);
+  }, [sessionQuestions, resultsMap]);
 
-  const handleSelectOption = (idx: number) => {
-    if (!currentQuestion || selectedOption !== null) return;
-    setSelectedOption(idx);
-    setAnswers((prev) => ({ ...prev, [currentQuestion.id]: idx }));
-
-    const isRight = idx === currentQuestion.correctIndex;
+  const finalizeQuestionOutcome = (isRight: boolean, userResponse?: string) => {
+    if (!currentQuestion) return;
+    setResultsMap((prev) => ({ ...prev, [currentQuestion.id]: isRight }));
     triggerHaptic(hapticsEnabled, isRight ? 14 : [18, 30, 18]);
 
     onRecordAttempt({
@@ -179,12 +202,11 @@ export function QuizView({
       correct: isRight,
       isDailyChallenge: selectedLevel === 'daily',
       isMockTest: selectedLevel === 'mock',
+      userResponse,
       timestamp: Date.now(),
     });
 
-    if (selectedLevel === 'daily') {
-      onCompleteDaily(todayKey);
-    }
+    if (selectedLevel === 'daily') onCompleteDaily(todayKey);
 
     if (selectedLevel === 'adaptive') {
       if (isRight) {
@@ -202,19 +224,31 @@ export function QuizView({
     }
   };
 
+  const handleSelectOption = (idx: number) => {
+    if (!currentQuestion || selectedOption !== null) return;
+    setSelectedOption(idx);
+    finalizeQuestionOutcome(idx === currentQuestion.correctIndex, currentQuestion.optionsLatex[idx]);
+  };
+
+  const handleSubmitShortAnswer = () => {
+    if (!currentQuestion || shortSubmitted || !shortInput.trim()) return;
+    setShortSubmitted(true);
+    const isRight = checkShortAnswer(currentQuestion, shortInput);
+    finalizeQuestionOutcome(isRight, shortInput.trim());
+  };
+
   const totalTargetCount = selectedLevel === 'adaptive' ? 10 : sessionQuestions.length;
 
   const handleNextOrFinish = () => {
     triggerHaptic(hapticsEnabled, 10);
     if (selectedLevel === 'adaptive') {
       if (sessionQuestions.length < 10) {
-        const nextQ = generatePracticeProblem(
-          adaptiveLevel,
-          Date.now() + (currentIdx + 1) * 7919
-        );
+        const nextQ = generatePracticeProblem(adaptiveLevel, Date.now() + (currentIdx + 1) * 7919);
         setSessionQuestions((prev) => [...prev, nextQ]);
         setCurrentIdx((i) => i + 1);
         setSelectedOption(null);
+        setShortInput('');
+        setShortSubmitted(false);
       } else {
         setFinished(true);
       }
@@ -224,10 +258,10 @@ export function QuizView({
     if (currentIdx + 1 < sessionQuestions.length) {
       setCurrentIdx((i) => i + 1);
       setSelectedOption(null);
+      setShortInput('');
+      setShortSubmitted(false);
     } else {
-      if (selectedLevel === 'mock') {
-        onCompleteMock?.();
-      }
+      if (selectedLevel === 'mock') onCompleteMock?.();
       setFinished(true);
     }
   };
@@ -237,14 +271,13 @@ export function QuizView({
     if (selectedLevel === 'daily') return 'Daily Challenge';
     if (selectedLevel === 'mixed') return 'Mixed Challenge';
     if (selectedLevel === 'mock') return 'Timed Mock Test (10 min)';
-    if (selectedLevel === 'adaptive') return `Adaptive Practice (Ended Level ${adaptiveLevel})`;
+    if (selectedLevel === 'adaptive') return `Adaptive Practice (Level ${adaptiveLevel})`;
     if (typeof selectedLevel === 'string' && selectedLevel.startsWith('topic:')) {
       return `Topic Assessment · ${selectedLevel.slice(6)}`;
     }
-    return `Level ${selectedLevel} · ${QUIZ_LEVELS[(selectedLevel as number) - 1].name}`;
+    return QUIZ_LEVELS[(selectedLevel as number) - 1].name;
   }, [selectedLevel, adaptiveLevel]);
 
-  // Practice Home
   if (!selectedLevel) {
     const totalAttempts = quizAttempts.length;
     const totalCorrect = quizAttempts.filter((a) => a.correct).length;
@@ -252,7 +285,6 @@ export function QuizView({
 
     return (
       <div className="max-w-4xl mx-auto space-y-6">
-        {/* Daily Challenge & Timed Mock Test Row */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="rounded-2xl border border-[#2F7CF6]/30 bg-white dark:bg-[#191C24] p-5 flex flex-col justify-between gap-4">
             <div className="space-y-1">
@@ -261,7 +293,7 @@ export function QuizView({
                 <span>Daily Challenge · {todayKey}</span>
               </div>
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                {dailyQuestion.category} (Level {dailyQuestion.level})
+                {dailyQuestion.category} ({dailyQuestion.difficultyTier ?? `Level ${dailyQuestion.level}`})
               </h2>
               <p className="text-sm text-slate-600 dark:text-slate-400">
                 {isDailyDone
@@ -278,17 +310,8 @@ export function QuizView({
                   : 'bg-[#2F7CF6] hover:bg-[#256AE0] text-white'
               }`}
             >
-              {isDailyDone ? (
-                <>
-                  <Check className="w-4 h-4" />
-                  <span>Completed Today</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  <span>Solve Daily Challenge</span>
-                </>
-              )}
+              {isDailyDone ? <Check className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
+              <span>{isDailyDone ? 'Completed Today' : 'Solve Daily Challenge'}</span>
             </button>
           </div>
 
@@ -299,10 +322,10 @@ export function QuizView({
                 <span>Timed Mock Exam · 10:00</span>
               </div>
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                12-Question Mock Test
+                12-Question University Mock Test
               </h2>
               <p className="text-sm text-slate-600 dark:text-slate-400">
-                Simulate exam conditions across all six multivariable calculus topics with auto-submit on timeout.
+                Mixed MCQ and short-answer problems covering limits, calculus, optimization, theorems, and linear algebra.
               </p>
             </div>
             <button
@@ -316,7 +339,7 @@ export function QuizView({
           </div>
         </div>
 
-        {/* Adaptive Difficulty Banner */}
+        {/* Adaptive Banner */}
         <div className="rounded-2xl border border-emerald-500/30 bg-white dark:bg-[#191C24] p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="inline-flex items-center gap-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
@@ -327,7 +350,7 @@ export function QuizView({
               Smart Adaptive Practice
             </h3>
             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
-              Starts at Level 2 and dynamically scales difficulty up on streaks or steps down for reinforcement.
+              Dynamically scales from Beginner through Advanced as you build accuracy streaks.
             </p>
           </div>
           <button
@@ -342,16 +365,14 @@ export function QuizView({
 
         {/* Topic-Wise Assessments */}
         <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#191C24] p-5 sm:p-6 space-y-4">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                <Target className="w-4 h-4 text-[#2F7CF6]" />
-                Topic-Wise Assessments (8 Questions)
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Target a specific weak area with curated and dynamically generated problems.
-              </p>
-            </div>
+          <div>
+            <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+              <Target className="w-4 h-4 text-[#2F7CF6]" />
+              Topic-Wise Practice & Assessments (8 Questions)
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Select any topic below to practice MCQ and short-answer problems with immediate derivations.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
@@ -383,15 +404,15 @@ export function QuizView({
           </div>
         </div>
 
-        {/* Difficulty Levels Practice Selector */}
+        {/* Practice by Difficulty Level */}
         <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#191C24] p-6 space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
-                Practice by Difficulty Level
+                Practice by Difficulty Tier
               </h2>
               <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                Choose curated curriculum questions or dynamically generated problems across four difficulty levels.
+                Choose curated curriculum questions (including short-answer) or procedurally generated sets.
               </p>
             </div>
 
@@ -400,9 +421,7 @@ export function QuizView({
                 type="button"
                 onClick={() => setPracticeSource('curated')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
-                  practiceSource === 'curated'
-                    ? 'bg-[#2F7CF6] text-white'
-                    : 'text-slate-600 dark:text-slate-300'
+                  practiceSource === 'curated' ? 'bg-[#2F7CF6] text-white' : 'text-slate-600 dark:text-slate-300'
                 }`}
               >
                 Curated Bank
@@ -411,9 +430,7 @@ export function QuizView({
                 type="button"
                 onClick={() => setPracticeSource('generated')}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
-                  practiceSource === 'generated'
-                    ? 'bg-[#2F7CF6] text-white'
-                    : 'text-slate-600 dark:text-slate-300'
+                  practiceSource === 'generated' ? 'bg-[#2F7CF6] text-white' : 'text-slate-600 dark:text-slate-300'
                 }`}
               >
                 <Dices className="w-3.5 h-3.5" />
@@ -427,35 +444,29 @@ export function QuizView({
               const lvlAttempts = quizAttempts.filter((a) => a.level === lvl.level);
               const lvlAcc =
                 lvlAttempts.length > 0
-                  ? Math.round(
-                      (lvlAttempts.filter((a) => a.correct).length / lvlAttempts.length) * 100
-                    )
+                  ? Math.round((lvlAttempts.filter((a) => a.correct).length / lvlAttempts.length) * 100)
                   : null;
               return (
                 <button
                   key={lvl.level}
                   type="button"
                   onClick={() => startQuiz(lvl.level)}
-                  className="group text-left rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#22252E] hover:border-[#2F7CF6] dark:hover:border-[#2F7CF6] p-5 transition-colors flex flex-col justify-between min-h-[136px]"
+                  className="group text-left rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#22252E] hover:border-[#2F7CF6] p-5 transition-colors flex flex-col justify-between min-h-[136px]"
                 >
                   <div>
                     <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                      <span>Level {lvl.level} of 4</span>
+                      <span>{lvl.tier} · Level {lvl.level}</span>
                       <span className="tabular-nums">
-                        {lvlAcc !== null ? `${lvlAcc}% accuracy` : '10 questions'}
+                        {lvlAcc !== null ? `${lvlAcc}% accuracy` : 'Practice'}
                       </span>
                     </div>
                     <h3 className="mt-2 text-base font-semibold text-slate-900 dark:text-white group-hover:text-[#2F7CF6] transition-colors">
                       {lvl.name}
                     </h3>
-                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                      {lvl.subtitle}
-                    </p>
+                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{lvl.subtitle}</p>
                   </div>
                   <div className="mt-4 flex items-center text-xs font-medium text-[#2F7CF6]">
-                    <span>
-                      {practiceSource === 'generated' ? 'Generate 10 Problems' : 'Start Quiz'}
-                    </span>
+                    <span>{practiceSource === 'generated' ? 'Generate 10 Problems' : 'Start Session'}</span>
                     <ChevronRight className="w-4 h-4 ml-1" />
                   </div>
                 </button>
@@ -470,10 +481,10 @@ export function QuizView({
           >
             <div className="text-left">
               <div className="text-sm font-semibold text-slate-900 dark:text-white">
-                Mixed Mastery Challenge ({practiceSource === 'generated' ? 'Dynamic' : 'Curated'})
+                Mixed Mastery Practice ({practiceSource === 'generated' ? 'Dynamic' : 'Curated'})
               </div>
               <div className="text-xs text-slate-500 dark:text-slate-400">
-                10 problems spanning partial derivatives, gradients, extrema, and vector fields
+                10 problems spanning Beginner, Intermediate, and Advanced topics
               </div>
             </div>
             <span className="px-4 py-2 rounded-xl bg-[#2F7CF6] text-white text-xs font-semibold whitespace-nowrap shrink-0">
@@ -482,13 +493,55 @@ export function QuizView({
           </button>
 
           {totalAttempts > 0 && (
-            <div className="pt-3 border-t border-slate-200 dark:border-white/10 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-              <span>
-                Cumulative Quiz History: {totalCorrect} / {totalAttempts} correct ({overallAccuracy}%)
-              </span>
-              <span>
-                Last session: {new Date(quizAttempts[0].timestamp).toLocaleDateString()}
-              </span>
+            <div className="pt-3 border-t border-slate-200 dark:border-white/10 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                <span>
+                  Practice History: {totalCorrect} / {totalAttempts} correct ({overallAccuracy}%)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowHistory((s) => !s)}
+                  className="inline-flex items-center gap-1.5 font-semibold text-[#2F7CF6] hover:underline"
+                >
+                  <History className="w-3.5 h-3.5" />
+                  <span>{showHistory ? 'Hide Recent Attempts' : 'View Practice History'}</span>
+                </button>
+              </div>
+
+              {showHistory && (
+                <div className="rounded-xl border border-slate-200 dark:border-white/10 overflow-x-auto max-h-56 overflow-y-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 dark:bg-[#12141B] text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-white/10">
+                      <tr>
+                        <th className="py-2 px-3 font-medium">Topic</th>
+                        <th className="py-2 px-3 font-medium">Level</th>
+                        <th className="py-2 px-3 font-medium">Result</th>
+                        <th className="py-2 px-3 font-medium text-right">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-white/10">
+                      {quizAttempts.slice(0, 15).map((att) => (
+                        <tr key={att.id} className="text-slate-700 dark:text-slate-300">
+                          <td className="py-2 px-3 font-medium">{att.category}</td>
+                          <td className="py-2 px-3 tabular-nums">L{att.level}</td>
+                          <td
+                            className={`py-2 px-3 font-semibold ${
+                              att.correct
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : 'text-rose-600 dark:text-rose-400'
+                            }`}
+                          >
+                            {att.correct ? 'Correct' : 'Incorrect'}
+                          </td>
+                          <td className="py-2 px-3 text-right tabular-nums text-slate-500">
+                            {new Date(att.timestamp).toLocaleDateString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -496,7 +549,6 @@ export function QuizView({
     );
   }
 
-  // Summary screen
   if (finished) {
     const pct = Math.round((score / sessionQuestions.length) * 100);
     const timeUsed = MOCK_DURATION_SECONDS - secondsLeft;
@@ -524,15 +576,12 @@ export function QuizView({
           </h3>
           <div className="space-y-2.5 max-h-[360px] overflow-y-auto pr-1">
             {sessionQuestions.map((q, idx) => {
-              const userAns = answers[q.id];
-              const isRight = userAns === q.correctIndex;
+              const isRight = resultsMap[q.id];
               return (
                 <div
                   key={q.id}
                   className={`rounded-xl border p-3.5 text-sm ${
-                    isRight
-                      ? 'border-emerald-500/40 bg-emerald-500/5'
-                      : 'border-rose-500/40 bg-rose-500/5'
+                    isRight ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-rose-500/40 bg-rose-500/5'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2 text-xs mb-1">
@@ -541,13 +590,11 @@ export function QuizView({
                     </span>
                     <span
                       className={`inline-flex items-center gap-1 font-semibold ${
-                        isRight
-                          ? 'text-emerald-600 dark:text-emerald-400'
-                          : 'text-rose-600 dark:text-rose-400'
+                        isRight ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                       }`}
                     >
                       {isRight ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
-                      {userAns === undefined ? 'Unanswered' : isRight ? 'Correct' : 'Incorrect'}
+                      {isRight === undefined ? 'Unanswered' : isRight ? 'Correct' : 'Incorrect'}
                     </span>
                   </div>
                   <div className="text-slate-800 dark:text-slate-200 overflow-x-auto">
@@ -569,9 +616,7 @@ export function QuizView({
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#2F7CF6] hover:bg-[#256AE0] text-white text-sm font-semibold transition-colors whitespace-nowrap shrink-0"
           >
             <RotateCcw className="w-4 h-4" />
-            {practiceSource === 'generated' || selectedLevel === 'mock'
-              ? 'New Problem Set'
-              : 'Retry Session'}
+            New Problem Set
           </button>
           <button
             type="button"
@@ -587,8 +632,9 @@ export function QuizView({
 
   if (!currentQuestion) return null;
 
-  const isAnswered = selectedOption !== null;
-  const isCorrect = selectedOption === currentQuestion.correctIndex;
+  const isShortAnswer = currentQuestion.questionType === 'short-answer';
+  const isAnswered = isShortAnswer ? shortSubmitted : selectedOption !== null;
+  const isCorrect = !!resultsMap[currentQuestion.id];
 
   return (
     <div className="max-w-xl mx-auto">
@@ -608,17 +654,11 @@ export function QuizView({
             {selectedLevel === 'mock' ? (
               <span
                 className={`inline-flex items-center gap-1 font-mono font-semibold tabular-nums ${
-                  secondsLeft < 60
-                    ? 'text-rose-500'
-                    : 'text-amber-600 dark:text-amber-400'
+                  secondsLeft < 60 ? 'text-rose-500' : 'text-amber-600 dark:text-amber-400'
                 }`}
               >
                 <Clock className="w-3.5 h-3.5" />
                 {formatTimer(secondsLeft)}
-              </span>
-            ) : selectedLevel === 'adaptive' ? (
-              <span className="tabular-nums font-semibold text-emerald-600 dark:text-emerald-400">
-                Level {currentQuestion.level} · Score: {score}
               </span>
             ) : (
               <span className="tabular-nums">Score: {score}</span>
@@ -636,77 +676,92 @@ export function QuizView({
           )}
 
           <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
-            Category: {currentQuestion.category}
-            {currentQuestion.isGenerated ? ' · Generated Problem' : ''}
-            {selectedLevel === 'adaptive' ? ` · Next Target Level ${adaptiveLevel}` : ''}
+            {currentQuestion.category} · {currentQuestion.difficultyTier ?? currentQuestion.levelName}
+            {isShortAnswer ? ' · Short Answer' : ''}
           </div>
         </div>
 
-        {/* Option Cards with Left Selection Rail */}
-        <div className="space-y-3">
-          {currentQuestion.optionsLatex.map((optLatex, idx) => {
-            const isThisSelected = selectedOption === idx;
-            const isThisCorrect = idx === currentQuestion.correctIndex;
-
-            let cardClasses =
-              'border-slate-200 dark:border-white/15 bg-slate-50 dark:bg-[#3A3A44]/55 hover:border-[#2F7CF6]';
-            let railClasses = 'border-slate-200 dark:border-white/15';
-
-            if (isAnswered) {
-              if (isThisCorrect) {
-                cardClasses = 'border-emerald-500 bg-emerald-500/12 dark:bg-[#0D2E14]';
-                railClasses = 'border-emerald-500/40';
-              } else if (isThisSelected && !isThisCorrect) {
-                cardClasses = 'border-rose-500 bg-rose-500/12 dark:bg-[#360E10]';
-                railClasses = 'border-rose-500/40';
-              } else {
-                cardClasses =
-                  'border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-[#3A3A44]/40 opacity-75';
-              }
-            }
-
-            return (
-              <button
-                key={idx}
-                type="button"
+        {isShortAnswer ? (
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <input
+                type="text"
                 disabled={isAnswered}
-                onClick={() => handleSelectOption(idx)}
-                className={`w-full min-h-[72px] rounded-xl border transition-colors flex items-stretch text-left overflow-hidden ${cardClasses}`}
-              >
-                <div
-                  className={`w-14 sm:w-16 shrink-0 border-r flex items-center justify-center ${railClasses}`}
+                value={shortInput}
+                onChange={(e) => setShortInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSubmitShortAnswer();
+                }}
+                placeholder={currentQuestion.answerHint || 'Enter numeric or symbolic answer'}
+                className="flex-1 h-12 px-4 rounded-xl border border-slate-300 dark:border-white/20 bg-slate-50 dark:bg-[#191C24] font-mono text-sm text-slate-900 dark:text-white focus:outline-none focus:border-[#2F7CF6]"
+              />
+              {!isAnswered && (
+                <button
+                  type="button"
+                  onClick={handleSubmitShortAnswer}
+                  disabled={!shortInput.trim()}
+                  className="h-12 px-5 rounded-xl bg-[#2F7CF6] hover:bg-[#256AE0] disabled:opacity-40 text-white text-sm font-semibold whitespace-nowrap shrink-0"
                 >
-                  {isThisSelected ? (
-                    <span className="w-6 h-6 rounded-full bg-[#3B82F6] text-white flex items-center justify-center">
-                      <Check className="w-3.5 h-3.5 stroke-[2.75]" />
-                    </span>
-                  ) : isAnswered && isThisCorrect ? (
-                    <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center">
-                      <Check className="w-3.5 h-3.5 stroke-[2.75]" />
-                    </span>
-                  ) : null}
-                </div>
+                  Check
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {currentQuestion.optionsLatex.map((optLatex, idx) => {
+              const isThisSelected = selectedOption === idx;
+              const isThisCorrect = idx === currentQuestion.correctIndex;
 
-                <div className="flex-1 px-4 py-3 flex items-center justify-between gap-3 overflow-x-auto">
-                  <div className="mx-auto text-slate-900 dark:text-slate-100">
-                    <MathTex tex={optLatex} />
+              let cardClasses =
+                'border-slate-200 dark:border-white/15 bg-slate-50 dark:bg-[#3A3A44]/55 hover:border-[#2F7CF6]';
+              let railClasses = 'border-slate-200 dark:border-white/15';
+
+              if (isAnswered) {
+                if (isThisCorrect) {
+                  cardClasses = 'border-emerald-500 bg-emerald-500/12 dark:bg-[#0D2E14]';
+                  railClasses = 'border-emerald-500/40';
+                } else if (isThisSelected && !isThisCorrect) {
+                  cardClasses = 'border-rose-500 bg-rose-500/12 dark:bg-[#360E10]';
+                  railClasses = 'border-rose-500/40';
+                } else {
+                  cardClasses =
+                    'border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-[#3A3A44]/40 opacity-75';
+                }
+              }
+
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  disabled={isAnswered}
+                  onClick={() => handleSelectOption(idx)}
+                  className={`w-full min-h-[72px] rounded-xl border transition-colors flex items-stretch text-left overflow-hidden ${cardClasses}`}
+                >
+                  <div
+                    className={`w-14 sm:w-16 shrink-0 border-r flex items-center justify-center ${railClasses}`}
+                  >
+                    {isThisSelected ? (
+                      <span className="w-6 h-6 rounded-full bg-[#3B82F6] text-white flex items-center justify-center">
+                        <Check className="w-3.5 h-3.5 stroke-[2.75]" />
+                      </span>
+                    ) : isAnswered && isThisCorrect ? (
+                      <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center">
+                        <Check className="w-3.5 h-3.5 stroke-[2.75]" />
+                      </span>
+                    ) : null}
                   </div>
-                  {isAnswered && (isThisCorrect || isThisSelected) && (
-                    <span
-                      className={`text-[11px] font-semibold whitespace-nowrap shrink-0 ${
-                        isThisCorrect
-                          ? 'text-emerald-600 dark:text-emerald-400'
-                          : 'text-rose-600 dark:text-rose-400'
-                      }`}
-                    >
-                      {isThisCorrect ? 'Correct' : 'Wrong'}
-                    </span>
-                  )}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+
+                  <div className="flex-1 px-4 py-3 flex items-center justify-between gap-3 overflow-x-auto">
+                    <div className="mx-auto text-slate-900 dark:text-slate-100">
+                      <MathTex tex={optLatex} />
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {isAnswered && (
           <div
@@ -716,18 +771,22 @@ export function QuizView({
                 : 'border-rose-500/40 bg-rose-500/5 text-slate-800 dark:text-slate-100'
             }`}
           >
-            <div className="flex items-center gap-1.5 font-semibold text-xs mb-1.5">
-              {isCorrect ? (
-                <>
-                  <Check className="w-4 h-4 text-emerald-500" />
-                  <span className="text-emerald-600 dark:text-emerald-400">Correct Answer</span>
-                </>
-              ) : (
-                <>
-                  <X className="w-4 h-4 text-rose-500" />
-                  <span className="text-rose-600 dark:text-rose-400">Incorrect Selection</span>
-                </>
-              )}
+            <div className="flex items-center justify-between gap-2 font-semibold text-xs mb-1.5">
+              <span className="inline-flex items-center gap-1.5">
+                {isCorrect ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-500" />
+                    <span className="text-emerald-600 dark:text-emerald-400">Correct Answer</span>
+                  </>
+                ) : (
+                  <>
+                    <X className="w-4 h-4 text-rose-500" />
+                    <span className="text-rose-600 dark:text-rose-400">
+                      Incorrect — Solution: {currentQuestion.optionsLatex[currentQuestion.correctIndex]}
+                    </span>
+                  </>
+                )}
+              </span>
             </div>
             <div className="overflow-x-auto text-xs sm:text-sm">
               <MathTex tex={currentQuestion.explanationLatex} />

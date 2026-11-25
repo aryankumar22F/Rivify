@@ -1,3 +1,4 @@
+import { QUIZ_BANK } from '../data/quizBank';
 import type { QuizQuestion } from '../types';
 import {
   solveDirectionalDerivative,
@@ -7,7 +8,7 @@ import {
   solvePartialDerivative,
   solveVectorField,
 } from './calculus';
-import { QUIZ_BANK } from '../data/quizBank';
+import { solveDoubleIntegral } from './integrals';
 import { parseExpression, toLatex } from './symbolic';
 
 function mulberry32(seed: number): () => number {
@@ -41,11 +42,8 @@ function shuffleWithCorrectIndex(
 ): { optionsLatex: string[]; correctIndex: number } {
   const unique: string[] = [correct];
   for (const d of distractors) {
-    if (d && !unique.includes(d)) {
-      unique.push(d);
-    }
+    if (d && !unique.includes(d)) unique.push(d);
   }
-  // Ensure 4 distinct options
   let padIdx = 1;
   while (unique.length < 4) {
     const candidate = `${correct} + ${padIdx}`;
@@ -72,7 +70,6 @@ export function generatePracticeProblem(
   const id = `gen-${level}-${Math.floor(rng() * 1e7)}`;
 
   if (level === 1) {
-    // Polynomial partial derivatives
     const c1 = pick([2, 3, 4, 5], rng);
     const c2 = pick([2, 3, 4], rng);
     const px = pick([2, 3, 4], rng);
@@ -99,6 +96,8 @@ export function generatePracticeProblem(
       id,
       level: 1,
       levelName: 'Foundations',
+      difficultyTier: 'Beginner',
+      questionType: 'mcq',
       category: 'Partial Derivative',
       prompt: `Find the partial derivative ∂f/∂${targetVar} of:`,
       expressionLatex: `f(x, y) = ${toLatex(parseExpression(expr))}`,
@@ -110,7 +109,6 @@ export function generatePracticeProblem(
   }
 
   if (level === 2) {
-    // Chain / Trig / Exp / Log partial derivatives
     const a = pick([2, 3, 4], rng);
     const b = pick([2, 3], rng);
     const v = pick(['x', 'y'], rng);
@@ -118,7 +116,7 @@ export function generatePracticeProblem(
     const templates = [
       {
         expr: `sin(${a}*x*y)`,
-        wrong1: v === 'x' ? `\\cos(${a}xy)` : `\\cos(${a}xy)`,
+        wrong1: `\\cos(${a}xy)`,
         wrong2: `-${a}${other}\\cos(${a}xy)`,
         wrong3: `${a}${v}\\cos(${a}xy)`,
       },
@@ -139,11 +137,7 @@ export function generatePracticeProblem(
     const solved = solvePartialDerivative(tpl.expr, v, 1);
     const { optionsLatex, correctIndex } = shuffleWithCorrectIndex(
       `f_${v} = ${solved.resultLatex}`,
-      [
-        `f_${v} = ${tpl.wrong1}`,
-        `f_${v} = ${tpl.wrong2}`,
-        `f_${v} = ${tpl.wrong3}`,
-      ],
+      [`f_${v} = ${tpl.wrong1}`, `f_${v} = ${tpl.wrong2}`, `f_${v} = ${tpl.wrong3}`],
       rng
     );
 
@@ -151,6 +145,8 @@ export function generatePracticeProblem(
       id,
       level: 2,
       levelName: 'Intermediate',
+      difficultyTier: 'Intermediate',
+      questionType: 'mcq',
       category: 'Partial Derivative',
       prompt: `Apply the Chain Rule to compute ∂f/∂${v} for:`,
       expressionLatex: `f(x, y) = ${toLatex(parseExpression(tpl.expr))}`,
@@ -162,7 +158,6 @@ export function generatePracticeProblem(
   }
 
   if (level === 3) {
-    // Gradient or Directional Derivative
     const useDir = rng() > 0.5;
     const a = pick([1, 2, 3], rng);
     const b = pick([1, 2, 3], rng);
@@ -184,12 +179,14 @@ export function generatePracticeProblem(
         id,
         level: 3,
         levelName: 'Applied Multivariable',
+        difficultyTier: 'Intermediate',
+        questionType: 'mcq',
         category: 'Gradient',
         prompt: 'Compute the symbolic gradient vector ∇f(x, y) of:',
         expressionLatex: `f(x, y) = ${toLatex(parseExpression(expr))}`,
         optionsLatex,
         correctIndex,
-        explanationLatex: `\\nabla f = \\left\\langle \\frac{\\partial f}{\\partial x},\\; \\frac{\\partial f}{\\partial y} \\right\\rangle = \\langle ${fxTex},\\; ${fyTex} \\rangle`,
+        explanationLatex: `\\nabla f = \\langle ${fxTex},\\; ${fyTex} \\rangle`,
         isGenerated: true,
       };
     }
@@ -211,11 +208,7 @@ export function generatePracticeProblem(
     const correctLatex = `\\frac{${numVal}}{${norm}}`;
     const { optionsLatex, correctIndex } = shuffleWithCorrectIndex(
       correctLatex,
-      [
-        `${numVal}`,
-        `\\frac{${Math.abs(numVal - 4)}}{${norm}}`,
-        `\\frac{${numVal + 2}}{${norm}}`,
-      ],
+      [`${numVal}`, `\\frac{${Math.abs(numVal - 4)}}{${norm}}`, `\\frac{${numVal + 2}}{${norm}}`],
       rng
     );
 
@@ -223,17 +216,19 @@ export function generatePracticeProblem(
       id,
       level: 3,
       levelName: 'Applied Multivariable',
+      difficultyTier: 'Intermediate',
+      questionType: 'mcq',
       category: 'Directional Derivative',
-      prompt: `Find D_u f(${px}, ${py}) in the direction v = ⟨${dirChoice[0]}, ${dirChoice[1]}⟩ for:`,
+      prompt: `Find D_u f(${px}, ${py}) in direction v = ⟨${dirChoice[0]}, ${dirChoice[1]}⟩ for:`,
       expressionLatex: `f(x, y) = ${toLatex(parseExpression(expr))}`,
       optionsLatex,
       correctIndex,
-      explanationLatex: `\\nabla f(${px}, ${py}) = \\langle ${2 * a * px},\\; ${2 * b * py} \\rangle,\\; \\mathbf{u} = \\left\\langle \\frac{${dirChoice[0]}}{${norm}},\\; \\frac{${dirChoice[1]}}{${norm}} \\right\\rangle \\implies D_{\\mathbf{u}}f = ${correctLatex}`,
+      explanationLatex: `D_{\\mathbf{u}}f = ${correctLatex}`,
       isGenerated: true,
     };
   }
 
-  // Level 4: Hessian classification or Vector Field Divergence/Curl
+  // Level 4: Hessian or Vector Field
   const useHessian = rng() > 0.5;
   if (useHessian) {
     const a = pick([1, 2, 3], rng);
@@ -259,12 +254,14 @@ export function generatePracticeProblem(
       id,
       level: 4,
       levelName: 'Mastery & Vector Calculus',
+      difficultyTier: 'Advanced',
+      questionType: 'mcq',
       category: 'Maxima & Minima',
       prompt: 'Classify the critical point (0, 0) using the Second Derivative Test for:',
       expressionLatex: `f(x, y) = ${toLatex(parseExpression(expr))}`,
       optionsLatex,
       correctIndex,
-      explanationLatex: `f_{xx} = ${mm.fxxVal},\\; f_{yy} = ${mm.fyyVal},\\; f_{xy} = 0 \\implies D = ${mm.discriminant} \\; (\\text{${mm.classification}})`,
+      explanationLatex: `D = ${mm.discriminant} \\implies \\text{${mm.classification}}`,
       isGenerated: true,
     };
   }
@@ -287,6 +284,8 @@ export function generatePracticeProblem(
     id,
     level: 4,
     levelName: 'Mastery & Vector Calculus',
+    difficultyTier: 'Advanced',
+    questionType: 'mcq',
     category: 'Vector Field',
     prompt: 'Compute the divergence ∇ · F of the 2D vector field:',
     expressionLatex: `\\mathbf{F}(x, y) = \\left\\langle ${toLatex(parseExpression(pExpr))},\\; ${toLatex(
@@ -294,7 +293,7 @@ export function generatePracticeProblem(
     )} \\right\\rangle`,
     optionsLatex,
     correctIndex,
-    explanationLatex: `\\nabla \\cdot \\mathbf{F} = \\frac{\\partial P}{\\partial x} + \\frac{\\partial Q}{\\partial y} = ${vf.divLatex}`,
+    explanationLatex: `\\nabla \\cdot \\mathbf{F} = ${vf.divLatex}`,
     isGenerated: true,
   };
 }
@@ -313,29 +312,162 @@ export function getDailyChallengeQuestion(dateKey: string): QuizQuestion {
   const seed = hashDateKey(dateKey);
   const level = ((seed % 4) + 1) as 1 | 2 | 3 | 4;
   const q = generatePracticeProblem(level, seed);
-  return {
-    ...q,
-    id: `daily-${dateKey}`,
-  };
+  return { ...q, id: `daily-${dateKey}` };
 }
 
 export const ASSESSMENT_TOPICS = [
   'Partial Derivative',
+  'Limits & Continuity',
   'Gradient',
   'Directional Derivative',
   'Linear Approximation',
+  'Integration',
   'Maxima & Minima',
+  'Optimization',
   'Vector Field',
+  'Vector Theorems',
+  'Linear Algebra',
 ] as const;
 
 export type AssessmentTopic = (typeof ASSESSMENT_TOPICS)[number];
 
-function generateTopicProblem(topic: AssessmentTopic, seedInput: number): QuizQuestion {
+export function generateTopicProblem(topic: AssessmentTopic, seedInput: number): QuizQuestion {
   const rng = mulberry32(seedInput);
   const id = `topic-${topic.toLowerCase().replace(/[^a-z]/g, '')}-${Math.floor(rng() * 1e7)}`;
 
   if (topic === 'Partial Derivative') {
     return generatePracticeProblem(rng() > 0.5 ? 2 : 1, seedInput);
+  }
+
+  if (topic === 'Limits & Continuity') {
+    const c = pick([2, 3, 4], rng);
+    const val = c * 2;
+    const isDNE = rng() > 0.5;
+    if (isDNE) {
+      return {
+        id,
+        level: 2,
+        levelName: 'Intermediate',
+        difficultyTier: 'Intermediate',
+        questionType: 'mcq',
+        category: 'Limits & Continuity',
+        prompt: 'Evaluate the multivariable limit as (x, y) → (0, 0):',
+        expressionLatex: `f(x, y) = \\frac{${c}x^2 - y^2}{x^2 + y^2}`,
+        optionsLatex: ['\\text{Does Not Exist}', `${c}`, '-1', '0'],
+        correctIndex: 0,
+        explanationLatex: `\\text{Along } y=0, f\\to ${c}; \\text{ along } x=0, f\\to -1. \\text{ Different path limits } \\implies \\text{DNE}.`,
+        isGenerated: true,
+      };
+    }
+    return {
+      id,
+      level: 1,
+      levelName: 'Foundations',
+      difficultyTier: 'Beginner',
+      questionType: 'short-answer',
+      category: 'Limits & Continuity',
+      prompt: `Find the numeric limit of f(x, y) = ${c}x + y^2 as (x, y) → (2, 0):`,
+      expressionLatex: `\\lim_{(x, y) \\to (2, 0)} (${c}x + y^2)`,
+      optionsLatex: [`${val}`, `${val + 2}`, `${c}`, '0'],
+      correctIndex: 0,
+      numericAnswer: val,
+      tolerance: 0.05,
+      answerHint: 'Enter a number',
+      explanationLatex: `\\text{Direct substitution gives } ${c}(2) + 0^2 = ${val}.`,
+      isGenerated: true,
+    };
+  }
+
+  if (topic === 'Integration') {
+    const a = pick([1, 2, 3], rng);
+    const b = pick([1, 2], rng);
+    const expr = `${a}*x + ${b}*y`;
+    const dbl = solveDoubleIntegral(expr, 0, 2, 0, 2);
+    const ans = Number(dbl.value.toFixed(2));
+    return {
+      id,
+      level: 2,
+      levelName: 'Intermediate',
+      difficultyTier: 'Intermediate',
+      questionType: 'short-answer',
+      category: 'Integration',
+      prompt: 'Compute the double integral over [0, 2] × [0, 2]:',
+      expressionLatex: `\\int_0^2 \\int_0^2 (${a}x + ${b}y)\\,dx\\,dy`,
+      optionsLatex: [`${ans}`, `${ans + 2}`, `${ans - 2}`, `${ans * 2}`],
+      correctIndex: 0,
+      numericAnswer: ans,
+      tolerance: 0.05,
+      answerHint: 'Enter exact integer value',
+      explanationLatex: `\\iint_{[0,2]^2} (${a}x+${b}y)\\,dA = ${ans}.`,
+      isGenerated: true,
+    };
+  }
+
+  if (topic === 'Optimization') {
+    const r2 = pick([8, 18, 32], rng);
+    const maxVal = r2 / 2;
+    return {
+      id,
+      level: 4,
+      levelName: 'Mastery & Vector Calculus',
+      difficultyTier: 'Advanced',
+      questionType: 'short-answer',
+      category: 'Optimization',
+      prompt: `Find the maximum value of f(x, y) = x·y subject to x² + y² = ${r2}:`,
+      expressionLatex: `\\max\\; xy \\quad \\text{s.t. } x^2 + y^2 = ${r2}`,
+      optionsLatex: [`${maxVal}`, `${r2}`, `${maxVal * 2}`, '0'],
+      correctIndex: 0,
+      numericAnswer: maxVal,
+      tolerance: 0.05,
+      answerHint: 'Enter numeric maximum',
+      explanationLatex: `\\text{By Lagrange Multipliers, } x^2=y^2=${r2 / 2} \\implies \\max(xy) = ${maxVal}.`,
+      isGenerated: true,
+    };
+  }
+
+  if (topic === 'Vector Theorems') {
+    const a = pick([2, 3, 4], rng);
+    const b = pick([1, 2, 3], rng);
+    const divSum = a + b + 1;
+    return {
+      id,
+      level: 4,
+      levelName: 'Mastery & Vector Calculus',
+      difficultyTier: 'Advanced',
+      questionType: 'short-answer',
+      category: 'Vector Theorems',
+      prompt: `Using the Divergence Theorem, find the outward flux of F = ⟨${a}x, ${b}y, z⟩ across [0, 1]³:`,
+      expressionLatex: `\\oiint_{\\partial [0,1]^3} \\langle ${a}x, ${b}y, z \\rangle\\cdot d\\mathbf{S}`,
+      optionsLatex: [`${divSum}`, `${divSum + 1}`, `${a * b}`, '0'],
+      correctIndex: 0,
+      numericAnswer: divSum,
+      tolerance: 0.05,
+      answerHint: 'Enter outward flux value',
+      explanationLatex: `\\nabla\\cdot\\mathbf{F} = ${a} + ${b} + 1 = ${divSum} \\implies \\text{Flux} = ${divSum}.`,
+      isGenerated: true,
+    };
+  }
+
+  if (topic === 'Linear Algebra') {
+    const k = pick([2, 3, 4], rng);
+    const det = 2 * k - 1;
+    return {
+      id,
+      level: 3,
+      levelName: 'Applied Multivariable',
+      difficultyTier: 'Intermediate',
+      questionType: 'short-answer',
+      category: 'Linear Algebra',
+      prompt: 'Compute the determinant of the 2×2 matrix:',
+      expressionLatex: `\\det\\begin{bmatrix} 2 & 1 \\\\ 1 & ${k} \\end{bmatrix}`,
+      optionsLatex: [`${det}`, `${2 * k + 1}`, `${k}`, '1'],
+      correctIndex: 0,
+      numericAnswer: det,
+      tolerance: 0.05,
+      answerHint: 'Enter integer determinant',
+      explanationLatex: `2(${k}) - (1)(1) = ${det}.`,
+      isGenerated: true,
+    };
   }
 
   if (topic === 'Gradient') {
@@ -358,12 +490,14 @@ function generateTopicProblem(topic: AssessmentTopic, seedInput: number): QuizQu
       id,
       level: 3,
       levelName: 'Applied Multivariable',
+      difficultyTier: 'Intermediate',
+      questionType: 'mcq',
       category: 'Gradient',
       prompt: 'Compute the gradient vector ∇f(x, y) of:',
       expressionLatex: `f(x, y) = ${toLatex(parseExpression(expr))}`,
       optionsLatex,
       correctIndex,
-      explanationLatex: `\\nabla f = \\langle f_x, f_y \\rangle = \\langle ${fxTex},\\; ${fyTex} \\rangle`,
+      explanationLatex: `\\nabla f = \\langle ${fxTex},\\; ${fyTex} \\rangle`,
       isGenerated: true,
     };
   }
@@ -388,23 +522,21 @@ function generateTopicProblem(topic: AssessmentTopic, seedInput: number): QuizQu
     const correctLatex = `\\frac{${numVal}}{${norm}}`;
     const { optionsLatex, correctIndex } = shuffleWithCorrectIndex(
       correctLatex,
-      [
-        `${numVal}`,
-        `\\frac{${Math.abs(numVal - 4)}}{${norm}}`,
-        `\\frac{${numVal + 3}}{${norm}}`,
-      ],
+      [`${numVal}`, `\\frac{${Math.abs(numVal - 4)}}{${norm}}`, `\\frac{${numVal + 3}}{${norm}}`],
       rng
     );
     return {
       id,
       level: 3,
       levelName: 'Applied Multivariable',
+      difficultyTier: 'Intermediate',
+      questionType: 'mcq',
       category: 'Directional Derivative',
-      prompt: `Find D_u f(${px}, ${py}) in the direction v = ⟨${dirChoice[0]}, ${dirChoice[1]}⟩ for:`,
+      prompt: `Find D_u f(${px}, ${py}) in direction v = ⟨${dirChoice[0]}, ${dirChoice[1]}⟩ for:`,
       expressionLatex: `f(x, y) = ${toLatex(parseExpression(expr))}`,
       optionsLatex,
       correctIndex,
-      explanationLatex: `\\nabla f(${px}, ${py}) \\cdot \\frac{\\mathbf{v}}{\\|\\mathbf{v}\\|} = ${correctLatex}`,
+      explanationLatex: `\\nabla f(${px}, ${py}) \\cdot \\mathbf{u} = ${correctLatex}`,
       isGenerated: true,
     };
   }
@@ -429,47 +561,20 @@ function generateTopicProblem(topic: AssessmentTopic, seedInput: number): QuizQu
       id,
       level: 3,
       levelName: 'Applied Multivariable',
+      difficultyTier: 'Intermediate',
+      questionType: 'mcq',
       category: 'Linear Approximation',
       prompt: `Find the tangent plane approximation L(x, y) at (${x0}, ${y0}) for:`,
       expressionLatex: `f(x, y) = ${toLatex(parseExpression(expr))}`,
       optionsLatex,
       correctIndex,
-      explanationLatex: `f(${x0},${y0})=${lin.f0},\\; f_x=${lin.fx0},\\; f_y=${lin.fy0} \\implies ${lin.tangentPlaneLatex}`,
+      explanationLatex: lin.tangentPlaneLatex,
       isGenerated: true,
     };
   }
 
   if (topic === 'Maxima & Minima') {
-    const a = pick([1, 2, 3], rng);
-    const b = pick([1, 2, 3], rng);
-    const variant = pick(['min', 'max', 'saddle'], rng);
-    const expr =
-      variant === 'min'
-        ? `${a}*x^2 + ${b}*y^2`
-        : variant === 'max'
-        ? `-${a}*x^2 - ${b}*y^2`
-        : `${a}*x^2 - ${b}*y^2`;
-    const mm = solveMaximaMinima(expr, 0, 0);
-    const correctTex = `\\text{${mm.classification}} \\; (D = ${mm.discriminant})`;
-    const candidates = [
-      `\\text{Local Minimum} \\; (D = ${4 * a * b})`,
-      `\\text{Local Maximum} \\; (D = ${4 * a * b})`,
-      `\\text{Saddle Point} \\; (D = ${-4 * a * b})`,
-      `\\text{Inconclusive} \\; (D = 0)`,
-    ].filter((c) => c !== correctTex);
-    const { optionsLatex, correctIndex } = shuffleWithCorrectIndex(correctTex, candidates, rng);
-    return {
-      id,
-      level: 4,
-      levelName: 'Mastery & Vector Calculus',
-      category: 'Maxima & Minima',
-      prompt: 'Classify the critical point (0, 0) using the Second Derivative Test for:',
-      expressionLatex: `f(x, y) = ${toLatex(parseExpression(expr))}`,
-      optionsLatex,
-      correctIndex,
-      explanationLatex: `f_{xx}=${mm.fxxVal},\\; f_{yy}=${mm.fyyVal},\\; f_{xy}=0 \\implies D = ${mm.discriminant}`,
-      isGenerated: true,
-    };
+    return generatePracticeProblem(4, seedInput);
   }
 
   // Vector Field
@@ -491,6 +596,8 @@ function generateTopicProblem(topic: AssessmentTopic, seedInput: number): QuizQu
     id,
     level: 4,
     levelName: 'Mastery & Vector Calculus',
+    difficultyTier: 'Advanced',
+    questionType: 'mcq',
     category: 'Vector Field',
     prompt: 'Compute the divergence ∇ · F of the 2D vector field:',
     expressionLatex: `\\mathbf{F}(x, y) = \\left\\langle ${toLatex(parseExpression(pExpr))},\\; ${toLatex(
@@ -498,14 +605,14 @@ function generateTopicProblem(topic: AssessmentTopic, seedInput: number): QuizQu
     )} \\right\\rangle`,
     optionsLatex,
     correctIndex,
-    explanationLatex: `\\nabla \\cdot \\mathbf{F} = P_x + Q_y = ${vf.divLatex}`,
+    explanationLatex: `\\nabla \\cdot \\mathbf{F} = ${vf.divLatex}`,
     isGenerated: true,
   };
 }
 
 export function generateTopicSession(topic: AssessmentTopic, count = 8): QuizQuestion[] {
   const curatedMatches = QUIZ_BANK.filter((q) => q.category === topic);
-  const questions: QuizQuestion[] = [...curatedMatches].slice(0, Math.min(4, count));
+  const questions: QuizQuestion[] = [...curatedMatches].slice(0, Math.min(3, count));
   const baseSeed = Date.now();
   let i = 0;
   while (questions.length < count) {
@@ -521,23 +628,6 @@ export function generateMockTest(count = 12): QuizQuestion[] {
   for (let i = 0; i < count; i++) {
     const topic = ASSESSMENT_TOPICS[i % ASSESSMENT_TOPICS.length];
     list.push(generateTopicProblem(topic, baseSeed + i * 9173));
-  }
-  return list;
-}
-
-export function generateSeededChallenge(
-  topic: string,
-  seed: number,
-  count = 5
-): QuizQuestion[] {
-  const matchedTopic = ASSESSMENT_TOPICS.find(
-    (t) => t.toLowerCase() === topic.toLowerCase()
-  );
-  const list: QuizQuestion[] = [];
-  for (let i = 0; i < count; i++) {
-    const activeTopic =
-      matchedTopic ?? ASSESSMENT_TOPICS[(seed + i) % ASSESSMENT_TOPICS.length];
-    list.push(generateTopicProblem(activeTopic, seed + i * 7919));
   }
   return list;
 }
