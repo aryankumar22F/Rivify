@@ -17,6 +17,7 @@ import {
 import type { GamificationSummary } from '../engine/gamification';
 import { ASSESSMENT_TOPICS, generateSeededChallenge } from '../engine/problemGenerator';
 import type { ChallengeRoom, LeaderboardEntry, QuizAttempt, QuizQuestion } from '../types';
+import { parseApiResponse } from '../utils/apiClient';
 import { shareSolutionText, triggerHaptic } from '../utils/pdfReport';
 import { MathTex } from './MathTex';
 
@@ -80,12 +81,10 @@ export function ArenaView({
     setLbError(null);
     try {
       const res = await fetch('/api/social/leaderboard');
-      const data = (await res.json()) as {
+      const data = await parseApiResponse<{
         weekKey?: string;
         entries?: LeaderboardEntry[];
-        error?: string;
-      };
-      if (!res.ok) throw new Error(data.error || 'Could not load leaderboard.');
+      }>(res, 'Could not load leaderboard.');
       setWeekKey(data.weekKey ?? '');
       setEntries(data.entries ?? []);
     } catch (err) {
@@ -109,8 +108,11 @@ export function ArenaView({
     setRoomError(null);
     try {
       const res = await fetch(`/api/social/challenges/${clean}`);
-      const data = (await res.json()) as { room?: ChallengeRoom; error?: string };
-      if (!res.ok || !data.room) throw new Error(data.error || 'Challenge room not found.');
+      const data = await parseApiResponse<{ room?: ChallengeRoom }>(
+        res,
+        'Challenge room not found.'
+      );
+      if (!data.room) throw new Error('Challenge room not found.');
       setActiveRoom(data.room);
       setPlayingQuestions(null);
     } catch (err) {
@@ -146,8 +148,7 @@ export function ArenaView({
           streak: gamification.currentStreak,
         }),
       });
-      const data = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(data.error || 'Could not submit score.');
+      await parseApiResponse<{ entry?: LeaderboardEntry }>(res, 'Could not submit score.');
       setPostMessage('Your verified stats have been posted to this week’s leaderboard.');
       await fetchLeaderboard();
     } catch (err) {
@@ -171,8 +172,11 @@ export function ArenaView({
           questionCount: createCount,
         }),
       });
-      const data = (await res.json()) as { room?: ChallengeRoom; error?: string };
-      if (!res.ok || !data.room) throw new Error(data.error || 'Failed to create room.');
+      const data = await parseApiResponse<{ room?: ChallengeRoom }>(
+        res,
+        'Failed to create room.'
+      );
+      if (!data.room) throw new Error('Failed to create room.');
       setActiveRoom(data.room);
       setJoinCode(data.room.code);
       setPlayingQuestions(null);
@@ -248,10 +252,15 @@ export function ArenaView({
           elapsedSeconds,
         }),
       });
-      const data = (await res.json()) as { room?: ChallengeRoom };
-      if (res.ok && data.room) {
+      const data = await parseApiResponse<{ room?: ChallengeRoom }>(
+        res,
+        'Could not submit challenge score.'
+      );
+      if (data.room) {
         setActiveRoom(data.room);
       }
+    } catch (err) {
+      setRoomError(err instanceof Error ? err.message : 'Unable to submit challenge score.');
     } finally {
       setSubmittingScore(false);
       setPlayingQuestions(null);

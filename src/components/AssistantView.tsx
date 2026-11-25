@@ -11,6 +11,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { solvePartialDerivative } from '../engine/calculus';
+import { parseApiResponse } from '../utils/apiClient';
 import { MathTex } from './MathTex';
 
 interface ChatMessage {
@@ -118,9 +119,12 @@ export function AssistantView({ initialContext }: AssistantViewProps) {
           context: activeContext ?? undefined,
         }),
       });
-      const data = (await res.json()) as { reply?: string; error?: string };
-      if (!res.ok || !data.reply) {
-        throw new Error(data.error || 'Assistant request failed.');
+      const data = await parseApiResponse<{ reply?: string }>(
+        res,
+        'Assistant request failed.'
+      );
+      if (!data.reply) {
+        throw new Error('Assistant request failed.');
       }
       lastRetryFnRef.current = null;
       setMessages((prev) => [
@@ -171,9 +175,12 @@ export function AssistantView({ initialContext }: AssistantViewProps) {
           studentAttempt,
         }),
       });
-      const data = (await res.json()) as { reply?: string; error?: string };
-      if (!res.ok || !data.reply) {
-        throw new Error(data.error || 'Solution check failed.');
+      const data = await parseApiResponse<{ reply?: string }>(
+        res,
+        'Solution check failed.'
+      );
+      if (!data.reply) {
+        throw new Error('Solution check failed.');
       }
       lastRetryFnRef.current = null;
       setCheckFeedback(data.reply);

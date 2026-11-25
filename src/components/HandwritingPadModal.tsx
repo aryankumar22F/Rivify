@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AlertCircle, Check, Eraser, Loader2, PenTool, Undo2, X } from 'lucide-react';
 import { parseExpression, toLatex, validateExpression } from '../engine/symbolic';
+import { parseApiResponse } from '../utils/apiClient';
 import { MathTex } from './MathTex';
 
 interface HandwritingPadModalProps {
@@ -130,9 +131,12 @@ export function HandwritingPadModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64 }),
       });
-      const data = (await res.json()) as { expression?: string; error?: string };
-      if (!res.ok || !data.expression) {
-        throw new Error(data.error || 'Could not recognize handwritten equation.');
+      const data = await parseApiResponse<{ expression?: string }>(
+        res,
+        'Could not recognize handwritten equation.'
+      );
+      if (!data.expression) {
+        throw new Error('Could not recognize handwritten equation.');
       }
       setRecognized(data.expression);
     } catch (err) {

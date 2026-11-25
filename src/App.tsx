@@ -54,6 +54,7 @@ import type {
   QuizAttempt,
   ToolId,
 } from './types';
+import { parseApiResponse } from './utils/apiClient';
 import { downloadCalculusPdfReport, triggerHaptic } from './utils/pdfReport';
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -543,11 +544,12 @@ export default function App() {
           snapshot: buildWorkspaceSnapshot(),
         }),
       });
-      const data = (await res.json()) as { syncedAt?: number; error?: string };
-      if (!res.ok) return data.error || 'Sync failed.';
+      const data = await parseApiResponse<{ syncedAt?: number }>(res, 'Sync failed.');
       return `Cloud snapshot saved at ${new Date(data.syncedAt ?? Date.now()).toLocaleTimeString()}.`;
-    } catch {
-      return 'Network unavailable — cloud sync requires an active server connection.';
+    } catch (err) {
+      return err instanceof Error
+        ? err.message
+        : 'Network unavailable — cloud sync requires an active server connection.';
     }
   };
 
@@ -558,13 +560,17 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ passphrase }),
       });
-      const data = (await res.json()) as { syncedAt?: number; snapshot?: unknown; error?: string };
-      if (!res.ok) return data.error || 'Could not restore cloud snapshot.';
+      const data = await parseApiResponse<{ syncedAt?: number; snapshot?: unknown }>(
+        res,
+        'Could not restore cloud snapshot.'
+      );
       const err = applyWorkspaceSnapshot(data.snapshot);
       if (err) return err;
       return `Restored snapshot from ${new Date(data.syncedAt ?? Date.now()).toLocaleString()}.`;
-    } catch {
-      return 'Network unavailable — unable to reach cloud sync server.';
+    } catch (err) {
+      return err instanceof Error
+        ? err.message
+        : 'Network unavailable — unable to reach cloud sync server.';
     }
   };
 
