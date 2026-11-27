@@ -921,4 +921,27 @@ test('Universal Multi-Format Input (Normal Text, Unicode, LaTeX, Explicit ASCII)
 
   const sciText = evaluateScientificExpression('square root of 16 plus 2 times 3 squared');
   assert.equal(sciText.value, 22);
+
+  // 8. Equations with "=" normalize cleanly in expression parsers, assignments, and solver modes
+  assert.equal(validateExpression('x^2 - 5x + 6 = 0').valid, true);
+  assert.equal(evaluateAST(parseExpression('x^2 - 5x + 6 = 0'), { x: 4 }), 2);
+  assert.equal(evaluateAST(parseExpression('2xy + 3y^2 = 10'), { x: 2, y: 3 }), 29);
+  assert.equal(evaluateAST(parseExpression('\\partial f / \\partial x = 2xy + 3y^2'), { x: 2, y: 3 }), 39);
+  assert.equal(evaluateAST(parseExpression('y = x^2 + 3x'), { x: 2 }), 10);
+
+  const derivFromEq = solveMathProblem({
+    input: 'x^2 - 5x + 6 = 0',
+    mode: 'derivative',
+    variable: 'x',
+  });
+  assert.equal(derivFromEq.resultPlain, '2*x - 5');
+
+  const yEq = solveMathProblem({
+    input: 'y = 2y - 4',
+    mode: 'auto',
+    variable: 'y',
+  });
+  assert.deepEqual(yEq.roots, [4]);
+
+  assert.equal(evaluateScientificExpression('2 + 3 =').value, 5);
 });

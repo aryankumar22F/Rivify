@@ -365,9 +365,9 @@ function isDifferentialLhs(lhsRaw: string): { isPartial: boolean; variable: stri
     .replace(/\\left|\\right/g, '')
     .replace(/\s+/g, '');
 
-  // LaTeX partial: \frac{\partial f}{\partial x}, \dfrac{\partial y}{\partial t}, \frac{\partial}{\partial x}
+  // LaTeX partial: \frac{\partial f}{\partial x}, \dfrac{\partial y}{\partial t}, \frac{\partial^2 f}{\partial x^2}
   const latexPartial = compact.match(
-    /^\\?[dt]?frac\{\\partial[a-zA-Z]?\}\{\\partial([a-zA-Z])\}$/i
+    /^\\?[dt]?frac\{\\partial(?:\^[0-9]+)?[a-zA-Z]?\}\{\\partial([a-zA-Z])(?:\^[0-9]+)?\}$/i
   );
   if (latexPartial) {
     return {
@@ -377,8 +377,30 @@ function isDifferentialLhs(lhsRaw: string): { isPartial: boolean; variable: stri
     };
   }
 
-  // LaTeX ordinary: \frac{df}{dx}, \frac{dy}{dx}, \frac{d}{dx}
-  const latexOrd = compact.match(/^\\?[dt]?frac\{d[a-zA-Z]?\}\{d([a-zA-Z])\}$/i);
+  // LaTeX slash partial: \partial f / \partial x, \partial / \partial x
+  const latexSlashPartial = compact.match(/^\\partial[a-zA-Z]?\/\\partial([a-zA-Z])$/i);
+  if (latexSlashPartial) {
+    return {
+      isPartial: true,
+      variable: latexSlashPartial[1].toLowerCase(),
+      lhsLabel: lhsRaw.trim(),
+    };
+  }
+
+  // LaTeX operator subscript partial: \partial_x f, \partial_{x} f
+  const latexOpSubPartial = compact.match(/^\\partial_\{?([a-zA-Z])\}?(?:\(?[a-zA-Z,]+\)?)?$/i);
+  if (latexOpSubPartial) {
+    return {
+      isPartial: true,
+      variable: latexOpSubPartial[1].toLowerCase(),
+      lhsLabel: lhsRaw.trim(),
+    };
+  }
+
+  // LaTeX ordinary: \frac{df}{dx}, \frac{dy}{dx}, \frac{d^2y}{dx^2}
+  const latexOrd = compact.match(
+    /^\\?[dt]?frac\{d(?:\^[0-9]+)?[a-zA-Z]?\}\{d([a-zA-Z])(?:\^[0-9]+)?\}$/i
+  );
   if (latexOrd) {
     return {
       isPartial: false,
@@ -387,8 +409,8 @@ function isDifferentialLhs(lhsRaw: string): { isPartial: boolean; variable: stri
     };
   }
 
-  // Unicode / plain partial: ∂f/∂x, ∂y/∂t, ∂/∂x
-  const unicodePartial = compact.match(/^∂[a-zA-Z]?\/∂([a-zA-Z])$/i);
+  // Unicode / plain partial: ∂f/∂x, ∂y/∂t, ∂/∂x, ∂²f/∂x²
+  const unicodePartial = compact.match(/^∂[²³0-9]?[a-zA-Z]?\/∂([a-zA-Z])[²³0-9]?$/i);
   if (unicodePartial) {
     return {
       isPartial: true,
@@ -397,8 +419,8 @@ function isDifferentialLhs(lhsRaw: string): { isPartial: boolean; variable: stri
     };
   }
 
-  // Plain ordinary: df/dx, dy/dx, d/dx
-  const plainOrd = compact.match(/^d[a-zA-Z]?\/d([a-zA-Z])$/i);
+  // Plain ordinary: df/dx, dy/dx, d/dx, d^2y/dx^2
+  const plainOrd = compact.match(/^d(?:\^?[0-9]+)?[a-zA-Z]?\/d([a-zA-Z])(?:\^?[0-9]+)?$/i);
   if (plainOrd) {
     return {
       isPartial: false,
@@ -417,8 +439,8 @@ function isDifferentialLhs(lhsRaw: string): { isPartial: boolean; variable: stri
     };
   }
 
-  // Prime notation: f'(x), y'(x), y'
-  const primeMatch = compact.match(/^[a-zA-Z]'(?:\(([a-zA-Z])\))?$/);
+  // Prime notation: f'(x), y'(x), y', y''
+  const primeMatch = compact.match(/^[a-zA-Z]'{1,2}(?:\(([a-zA-Z])\))?$/);
   if (primeMatch) {
     return {
       isPartial: false,
@@ -430,14 +452,21 @@ function isDifferentialLhs(lhsRaw: string): { isPartial: boolean; variable: stri
   return null;
 }
 
-function isFunctionAssignmentLhs(lhsRaw: string): boolean {
+function isFunctionAssignmentLhs(lhsRaw: string, rhsRaw = ''): boolean {
   const compact = lhsRaw.replace(/\\left|\\right|\s+/g, '');
-  // f(x), f(x, y), g(t), z, y, f
+  // f(x), f(x, y), g(t), h(x)
   if (/^[a-zA-Z]\([a-zA-Z](?:,[a-zA-Z])*\)$/.test(compact)) {
     return true;
   }
-  if (/^[fyz]$/.test(compact.toLowerCase())) {
-    return true;
+  const single = compact.toLowerCase();
+  // f = RHS, y = RHS, z = RHS, g = RHS, h = RHS, u = RHS, v = RHS, w = RHS
+  // Only treat as assignment if the LHS symbol doesn't also appear as an unknown on RHS (so "y = 2y - 4" remains an equation)
+  if (/^[fghuvwyz]$/.test(single)) {
+    const rhsNorm = preprocessMathSyntax(rhsRaw).toLowerCase();
+    const usedOnRhs = new RegExp(`(?<![a-z])${single}(?![a-z])`).test(rhsNorm);
+    if (!usedOnRhs) {
+      return true;
+    }
   }
   return false;
 }
@@ -495,7 +524,7 @@ export function analyzeMathInput(rawInput: string): AnalyzedMathInput {
         lhsLabel: diffLhs.lhsLabel,
       };
     }
-    if (isFunctionAssignmentLhs(lhs) && rhs) {
+    if (isFunctionAssignmentLhs(lhs, rhs) && rhs) {
       return {
         kind: 'function-assignment',
         expr: rhs,
@@ -600,9 +629,26 @@ export function analyzeMathInput(rawInput: string): AnalyzedMathInput {
  */
 export function normalizeExpressionOnly(rawInput: string): string {
   const analyzed = analyzeMathInput(rawInput);
-  if (analyzed.kind === 'equation' || analyzed.kind === 'linear-system') {
-    // Keep '=' so expression-only validators/parsers report a clear equation hint
-    return preprocessMathSyntax(analyzed.expr);
+  if (analyzed.kind === 'linear-system') {
+    throw new Error(
+      'Systems of equations (separated by ";" or new lines) must be solved in Math Problem Solver → Linear System.'
+    );
+  }
+  if (analyzed.kind === 'equation') {
+    const eqSplit = splitTopLevelEquals(analyzed.expr);
+    if (!eqSplit) {
+      return preprocessMathSyntax(analyzed.expr);
+    }
+    const [rawLhs, rawRhs] = eqSplit;
+    const lhs = preprocessMathSyntax(rawLhs);
+    const rhs = preprocessMathSyntax(rawRhs);
+    if (!lhs) {
+      throw new Error('Incomplete equation: missing expression before "=".');
+    }
+    if (!rhs || rhs === '0') {
+      return lhs;
+    }
+    return `(${lhs}) - (${rhs})`;
   }
   return preprocessMathSyntax(analyzed.expr);
 }

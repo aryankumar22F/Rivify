@@ -70,7 +70,7 @@ function normalizeFuncName(name: string): FuncName {
 export function tokenize(input: string): Token[] {
   const normalized = normalizeExpressionOnly(input);
   if (normalized.includes('=')) {
-    throw new Error('Equations with "=" belong in Math Problem Solver (expression expected here).');
+    throw new Error('Multiple "=" signs are not allowed in a single expression.');
   }
   const cleaned = normalized.replace(/\s+/g, '');
 
