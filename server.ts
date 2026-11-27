@@ -1,4 +1,5 @@
 import express from 'express';
+import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createApiApp } from './server/app';
@@ -9,6 +10,7 @@ const PORT = Number(process.env.PORT) || 3000;
 
 async function startServer() {
   const app = createApiApp();
+  const httpServer = http.createServer(app);
 
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
@@ -16,6 +18,10 @@ async function startServer() {
       server: {
         middlewareMode: true,
         hmr: false,
+        watch: null,
+        ws: {
+          server: httpServer,
+        },
       },
       appType: 'spa',
     });
@@ -28,7 +34,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`RIVIFY server listening on http://0.0.0.0:${PORT}`);
   });
 }

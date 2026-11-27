@@ -80,7 +80,7 @@ import { ProbStatsView } from './components/ProbStatsView';
 import { QuestionPaperView } from './components/QuestionPaperView';
 import { QuizView } from './components/QuizView';
 import { ResearchWorkspaceView } from './components/ResearchWorkspaceView';
-import { RivifyBrandLockup, RivifyLogoMark } from './components/RivifyLogo';
+import { RivifyBrandLockup } from './components/RivifyLogo';
 import { ScientificCalculatorView } from './components/ScientificCalculatorView';
 import { SeriesIntegralsView } from './components/SeriesIntegralsView';
 import { SettingsModal } from './components/SettingsModal';
@@ -1246,19 +1246,16 @@ export default function App() {
               >
                 <Menu className="w-5 h-5" />
               </button>
-              <button
-                type="button"
-                onClick={() => handleSelectTool('dashboard')}
-                aria-label="RIVIFY Home"
-                className="shrink-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2F7CF6] hover:scale-105 transition-transform"
-              >
-                <RivifyLogoMark size={28} />
-              </button>
-              <h1 className="text-lg font-medium font-display text-slate-900 dark:text-white truncate">
+              <RivifyBrandLockup compact onClick={() => handleSelectTool('dashboard')} />
+              <span
+                className="hidden sm:block h-4 w-px bg-slate-200 dark:bg-white/15 shrink-0"
+                aria-hidden="true"
+              />
+              <h1 className="hidden sm:block text-base font-medium font-display text-slate-900 dark:text-white truncate">
                 {topBarTitle}
               </h1>
               {activeToolMeta && (
-                <span className="hidden sm:inline-block text-xs text-slate-500 dark:text-slate-300/80 truncate">
+                <span className="hidden md:inline-block text-xs text-slate-500 dark:text-slate-300/80 truncate">
                   · {activeToolMeta.label}
                 </span>
               )}
@@ -1775,6 +1772,38 @@ export default function App() {
               {activeTool === 'about' && <AboutView />}
             </motion.div>
           </main>
+
+          <footer
+            className={`border-t border-slate-200 dark:border-white/10 bg-white/70 dark:bg-[#0E1015]/90 px-4 sm:px-6 lg:px-8 py-4 ${
+              isCalcTool(activeTool) ? 'pb-20 md:pb-4' : ''
+            }`}
+          >
+            <div className="max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <RivifyBrandLockup compact onClick={() => handleSelectTool('dashboard')} />
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  Explore. Calculate. Master.
+                </span>
+              </div>
+              <div className="flex items-center gap-3 text-xs font-medium text-slate-500 dark:text-slate-400">
+                <button
+                  type="button"
+                  onClick={() => handleSelectTool('dashboard')}
+                  className="hover:text-slate-900 dark:hover:text-white transition-colors"
+                >
+                  Dashboard
+                </button>
+                <span aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  onClick={() => handleSelectTool('about')}
+                  className="hover:text-slate-900 dark:hover:text-white transition-colors"
+                >
+                  About RIVIFY
+                </button>
+              </div>
+            </div>
+          </footer>
 
           {isCalcTool(activeTool) && (
             <nav

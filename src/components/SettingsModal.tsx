@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import type { AppSettings } from '../types';
+import { RivifyBrandLockup } from './RivifyLogo';
 
 interface SettingsModalProps {
   open: boolean;
@@ -70,10 +71,13 @@ export function SettingsModal({
       aria-labelledby="settings-title"
     >
       <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 dark:border-white/15 bg-white dark:bg-[#191C24] p-6 space-y-6 shadow-2xl">
-        <div className="flex items-center justify-between">
-          <h2 id="settings-title" className="text-lg font-semibold text-slate-900 dark:text-white">
-            Calculator & Study Settings
-          </h2>
+        <div className="flex items-center justify-between gap-3">
+          <div className="space-y-1">
+            <RivifyBrandLockup compact />
+            <h2 id="settings-title" className="text-lg font-semibold text-slate-900 dark:text-white">
+              Calculator &amp; Study Settings
+            </h2>
+          </div>
           <button
             type="button"
             onClick={onClose}

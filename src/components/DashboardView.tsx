@@ -43,6 +43,7 @@ import type {
   WhiteboardSession,
 } from '../types';
 import { shareSolutionText } from '../utils/pdfReport';
+import { RivifyBrandLockup } from './RivifyLogo';
 
 interface DashboardViewProps {
   history: HistoryItem[];
@@ -333,8 +334,8 @@ export function DashboardView({
       <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#191C24] p-6 space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#2F7CF6] mb-1">
-              RIVIFY · Explore. Calculate. Master.
+            <div className="mb-2.5">
+              <RivifyBrandLockup compact showTagline />
             </div>
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
               Learning Dashboard
