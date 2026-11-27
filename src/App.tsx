@@ -932,6 +932,8 @@ export default function App() {
       ? t.formulaLibrary
       : activeTool === 'about'
       ? t.aboutDeveloper
+      : isCalcTool(activeTool)
+      ? 'Multivariable Calculus'
       : t.appName;
 
   const activeToolMeta = localizedCalcTools.find((item) => item.id === activeTool);
@@ -1254,7 +1256,7 @@ export default function App() {
               <h1 className="hidden sm:block text-base font-medium font-display text-slate-900 dark:text-white truncate">
                 {topBarTitle}
               </h1>
-              {activeToolMeta && (
+              {activeToolMeta && activeTool !== 'partial-derivative' && (
                 <span className="hidden md:inline-block text-xs text-slate-500 dark:text-slate-300/80 truncate">
                   · {activeToolMeta.label}
                 </span>
