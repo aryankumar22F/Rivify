@@ -4,7 +4,7 @@ import express from 'express';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { GoogleGenAI, type GenerateContentParameters } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, Type, type GenerateContentParameters } from '@google/genai';
 
 function resolveWritableDataDir(): string {
   // Vercel and read-only serverless filesystems must write only to os.tmpdir()
@@ -38,24 +38,42 @@ function resolveSyncTarget(passphrase: string): { hash: string; filePath: string
   return { hash, filePath };
 }
 
-const PRIMARY_MODEL = 'gemini-4-hydrogen';
-const FALLBACK_MODEL = 'gemini-3.1-flash-lite';
+const PRIMARY_MODEL = 'gemini-3.1-flash-lite';
+const FALLBACK_MODEL = 'gemini-4-hydrogen';
 
-function createGeminiClient(): GoogleGenAI {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+function resolveGeminiApiKey(): { apiKey: string | null; source: string | null } {
+  const candidates: Array<[string, string | undefined]> = [
+    ['RIVIFY_API_KEY', process.env.RIVIFY_API_KEY],
+    ['GEMINI_API_KEY', process.env.GEMINI_API_KEY],
+    ['GOOGLE_API_KEY', process.env.GOOGLE_API_KEY],
+  ];
+  for (const [name, raw] of candidates) {
+    const trimmed = raw?.trim();
+    if (trimmed) {
+      return { apiKey: trimmed, source: name };
+    }
+  }
+  return { apiKey: null, source: null };
+}
+
+function createGeminiClient(): { ai: GoogleGenAI; keySource: string } {
+  const { apiKey, source } = resolveGeminiApiKey();
+  if (!apiKey || !source) {
     throw new Error(
-      'GEMINI_API_KEY is not configured on the server. Add GEMINI_API_KEY in your deployment Environment Variables or Secrets panel.'
+      'Missing Gemini API key on the server. Configure RIVIFY_API_KEY or GEMINI_API_KEY in your deployment Environment Variables.'
     );
   }
-  return new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
+  return {
+    ai: new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
       },
-    },
-  });
+    }),
+    keySource: source,
+  };
 }
 
 function extractReadableError(err: unknown): { status: number; message: string } {
@@ -73,7 +91,7 @@ function extractReadableError(err: unknown): { status: number; message: string }
           return {
             status: 503,
             message:
-              'The handwriting recognition service is temporarily busy due to high demand. Please try again in a moment.',
+              'The equation recognition service is temporarily busy due to high demand. Please try again in a moment.',
           };
         }
         return { status: code, message: parsed.error.message };
@@ -83,13 +101,13 @@ function extractReadableError(err: unknown): { status: number; message: string }
     }
   }
 
-  if (raw.includes('GEMINI_API_KEY')) {
+  if (raw.includes('Missing Gemini API key') || raw.includes('GEMINI_API_KEY') || raw.includes('RIVIFY_API_KEY')) {
     return { status: 503, message: raw };
   }
-  if (raw.includes('403') || raw.includes('PERMISSION_DENIED') || raw.includes('API_KEY_INVALID')) {
+  if (raw.includes('403') || raw.includes('PERMISSION_DENIED') || raw.includes('API_KEY_INVALID') || raw.includes('API key not valid')) {
     return {
       status: 403,
-      message: 'API key rejected. Please verify GEMINI_API_KEY in deployment environment variables.',
+      message: 'API key rejected by Gemini API. Please verify RIVIFY_API_KEY or GEMINI_API_KEY in deployment environment variables.',
     };
   }
   if (raw.includes('429') || raw.includes('RESOURCE_EXHAUSTED')) {
@@ -108,11 +126,11 @@ function extractReadableError(err: unknown): { status: number; message: string }
     return {
       status: 503,
       message:
-        'The handwriting recognition service is temporarily busy due to high demand. Please try again in a moment.',
+        'The equation recognition service is temporarily busy due to high demand. Please try again in a moment.',
     };
   }
 
-  return { status: 500, message: raw || 'Unable to process handwriting input.' };
+  return { status: 500, message: raw || 'Unable to process image or handwriting input.' };
 }
 
 function isTransientError(err: unknown): boolean {
@@ -122,6 +140,8 @@ function isTransientError(err: unknown): boolean {
     msg.includes('UNAVAILABLE') ||
     msg.includes('429') ||
     msg.includes('RESOURCE_EXHAUSTED') ||
+    msg.includes('404') ||
+    msg.includes('NOT_FOUND') ||
     msg.includes('ECONNRESET') ||
     msg.includes('ETIMEDOUT')
   );
@@ -158,10 +178,14 @@ async function generateWithResilience(
   ai: GoogleGenAI,
   params: Omit<GenerateContentParameters, 'model'>
 ) {
-  // Keep total execution comfortably within serverless 10s budget
-  const attempts: { model: string; delayMs: number; timeoutMs: number }[] = [
-    { model: PRIMARY_MODEL, delayMs: 0, timeoutMs: 5200 },
-    { model: FALLBACK_MODEL, delayMs: 150, timeoutMs: 3600 },
+  const attempts: {
+    model: string;
+    delayMs: number;
+    timeoutMs: number;
+    thinkingLevel: ThinkingLevel;
+  }[] = [
+    { model: PRIMARY_MODEL, delayMs: 0, timeoutMs: 8000, thinkingLevel: ThinkingLevel.MINIMAL },
+    { model: FALLBACK_MODEL, delayMs: 150, timeoutMs: 8000, thinkingLevel: ThinkingLevel.LOW },
   ];
 
   let lastErr: unknown;
@@ -169,17 +193,26 @@ async function generateWithResilience(
     if (attempt.delayMs > 0) {
       await sleep(attempt.delayMs);
     }
+    const attemptStart = Date.now();
     try {
       return await generateWithTimeout(
         ai,
         {
           ...params,
           model: attempt.model,
+          config: {
+            ...params.config,
+            thinkingConfig: { thinkingLevel: attempt.thinkingLevel },
+          },
         },
         attempt.timeoutMs
       );
     } catch (err) {
       lastErr = err;
+      const reason = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `[ocr] attempt failed model=${attempt.model} durationMs=${Date.now() - attemptStart} reason="${reason.slice(0, 180)}"`
+      );
       if (!isTransientError(err) && !isTimeoutError(err)) {
         throw err;
       }
@@ -223,20 +256,38 @@ export function createApiApp() {
   });
 
   app.get('/api/health', (_req, res) => {
-    res.json({ ok: true, ocrConfigured: Boolean(process.env.GEMINI_API_KEY) });
+    const { apiKey, source } = resolveGeminiApiKey();
+    res.json({
+      ok: true,
+      ocrConfigured: Boolean(apiKey),
+      keySource: source,
+    });
   });
 
   // Handwriting recognition endpoint
   app.post('/api/assistant/recognize-handwriting', async (req, res) => {
+    const startedAt = Date.now();
     try {
-      const { imageBase64 } = req.body as { imageBase64?: string };
+      const { imageBase64 } = (req.body ?? {}) as { imageBase64?: string };
       if (!imageBase64 || typeof imageBase64 !== 'string') {
         res.status(400).json({ error: 'Handwriting canvas image is required.' });
         return;
       }
 
-      const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-      const ai = createGeminiClient();
+      const base64Data = imageBase64
+        .replace(/^data:image\/\w+;base64,/i, '')
+        .replace(/\s+/g, '');
+      if (base64Data.length < 32) {
+        res.status(400).json({ error: 'Handwriting image payload is empty or corrupted.' });
+        return;
+      }
+
+      const { ai, keySource } = createGeminiClient();
+      console.info(
+        `[ocr:handwriting] start keySource=${keySource} payloadKB=${Math.round(
+          (base64Data.length * 3) / 4 / 1024
+        )}`
+      );
 
       const response = await generateWithResilience(ai, {
         contents: {
@@ -258,6 +309,9 @@ Do not include "f(x,y) =", markdown backticks, or any extra words. Just the expr
             },
           ],
         },
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+        },
       });
 
       const raw = (response.text ?? '')
@@ -273,17 +327,22 @@ Do not include "f(x,y) =", markdown backticks, or any extra words. Just the expr
         return;
       }
 
+      console.info(`[ocr:handwriting] success durationMs=${Date.now() - startedAt}`);
       res.json({ expression: raw });
     } catch (err: unknown) {
       const { status, message } = extractReadableError(err);
+      console.error(
+        `[ocr:handwriting] failed status=${status} durationMs=${Date.now() - startedAt} error="${message}"`
+      );
       res.status(status).json({ error: message });
     }
   });
 
   // Math Scanner OCR endpoint for uploaded images (returns expression + LaTeX only, never fabricates solutions)
   app.post('/api/scanner/recognize-image', async (req, res) => {
+    const startedAt = Date.now();
     try {
-      const { imageBase64, mimeType } = req.body as {
+      const { imageBase64, mimeType } = (req.body ?? {}) as {
         imageBase64?: string;
         mimeType?: string;
       };
@@ -292,47 +351,68 @@ Do not include "f(x,y) =", markdown backticks, or any extra words. Just the expr
         return;
       }
 
-      const dataUrlMatch = imageBase64.match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,(.+)$/i);
-      const cleanMime = dataUrlMatch
-        ? dataUrlMatch[1].toLowerCase() === 'image/jpg'
-          ? 'image/jpeg'
-          : dataUrlMatch[1].toLowerCase()
-        : mimeType && /^image\/(png|jpeg|jpg|webp)$/i.test(mimeType)
-        ? mimeType.toLowerCase() === 'image/jpg'
-          ? 'image/jpeg'
-          : mimeType.toLowerCase()
-        : 'image/png';
-      const base64Data = dataUrlMatch ? dataUrlMatch[2] : imageBase64;
+      const anyDataUrlMatch = imageBase64.match(/^data:([^;]+);base64,([\s\S]+)$/i);
+      const rawMime = (anyDataUrlMatch ? anyDataUrlMatch[1] : mimeType || 'image/png')
+        .trim()
+        .toLowerCase();
+      const normalizedMime = rawMime === 'image/jpg' ? 'image/jpeg' : rawMime;
+
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(normalizedMime)) {
+        res.status(400).json({
+          error: `Unsupported image format "${rawMime}". Upload a PNG, JPG, or WEBP image.`,
+        });
+        return;
+      }
+
+      const base64Data = (anyDataUrlMatch ? anyDataUrlMatch[2] : imageBase64).replace(/\s+/g, '');
 
       if (base64Data.length < 32) {
         res.status(400).json({ error: 'Image payload appears empty or corrupted.' });
         return;
       }
 
-      const ai = createGeminiClient();
+      const { ai, keySource } = createGeminiClient();
+      console.info(
+        `[ocr:scanner] start keySource=${keySource} mime=${normalizedMime} payloadKB=${Math.round(
+          (base64Data.length * 3) / 4 / 1024
+        )}`
+      );
+
       const response = await generateWithResilience(ai, {
         contents: {
           parts: [
             {
               inlineData: {
-                mimeType: cleanMime,
+                mimeType: normalizedMime,
                 data: base64Data,
               },
             },
             {
               text: `Extract ONLY the mathematical expression or equation visible in this image.
 Do NOT solve the equation or invent steps.
-Respond strictly as a JSON object with keys:
+Return a JSON object with keys:
 - "readable": boolean (true if a valid math expression/equation is legible, false if image has no legible math)
 - "expression": string (clean single-line expression or equation preserving notation like "∂f/∂x = 2*x*y + 3*y^2", "x^2 - 5*x + 6 = 0", or "2*x^2*y + sin(x)")
 - "latex": string (clean LaTeX representation, e.g. "\\frac{\\partial f}{\\partial x} = 2xy + 3y^2")
 - "detectedCategory": string (e.g. "Partial Differential", "Algebraic Equation", "Calculus Expression", "Linear System", "Trigonometric Expression", or "Unreadable")
-- "reason": string (only brief explanation if readable is false or notation was ambiguous).`,
+- "reason": string (brief note only if readable is false or notation was ambiguous).`,
             },
           ],
         },
         config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
           responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              readable: { type: Type.BOOLEAN },
+              expression: { type: Type.STRING },
+              latex: { type: Type.STRING },
+              detectedCategory: { type: Type.STRING },
+              reason: { type: Type.STRING },
+            },
+            required: ['readable', 'expression', 'latex', 'detectedCategory'],
+          },
         },
       });
 
@@ -351,6 +431,7 @@ Respond strictly as a JSON object with keys:
       try {
         parsed = JSON.parse(rawText);
       } catch {
+        console.warn(`[ocr:scanner] unparseable JSON durationMs=${Date.now() - startedAt}`);
         res.status(422).json({
           error: 'OCR could not structure a mathematical expression from this image. Try a clearer crop.',
         });
@@ -358,6 +439,7 @@ Respond strictly as a JSON object with keys:
       }
 
       if (parsed.readable === false || !parsed.expression?.trim()) {
+        console.info(`[ocr:scanner] unreadable durationMs=${Date.now() - startedAt}`);
         res.status(422).json({
           error:
             parsed.reason?.trim() ||
@@ -366,6 +448,9 @@ Respond strictly as a JSON object with keys:
         return;
       }
 
+      console.info(
+        `[ocr:scanner] success mime=${normalizedMime} durationMs=${Date.now() - startedAt}`
+      );
       res.json({
         expression: parsed.expression.trim(),
         latex: (parsed.latex ?? parsed.expression).trim(),
@@ -374,6 +459,9 @@ Respond strictly as a JSON object with keys:
       });
     } catch (err: unknown) {
       const { status, message } = extractReadableError(err);
+      console.error(
+        `[ocr:scanner] failed status=${status} durationMs=${Date.now() - startedAt} error="${message}"`
+      );
       res.status(status).json({ error: message });
     }
   });

@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import { createApiApp } from '../server/app';
+import { createApiApp } from '../server/app.js';
 
 let cachedApp: ReturnType<typeof createApiApp> | null = null;
 
@@ -36,14 +36,12 @@ export default function handler(req: IncomingMessage, res: ServerResponse): Prom
       const app = getApp();
       app(req as Parameters<typeof app>[0], res as Parameters<typeof app>[1]);
     } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Serverless invocation failed.';
+      console.error('[api/index] invocation error:', msg);
       if (!res.headersSent) {
         res.statusCode = 500;
         res.setHeader('Content-Type', 'application/json');
-        res.end(
-          JSON.stringify({
-            error: err instanceof Error ? err.message : 'Serverless invocation failed.',
-          })
-        );
+        res.end(JSON.stringify({ error: msg }));
       }
       finish();
     }

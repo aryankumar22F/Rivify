@@ -4,13 +4,13 @@
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
     "module": "ESNext",
-    "types": ["vite/client", "vite-plugin-pwa/client"],
     "lib": [
       "ES2022",
       "DOM",
       "DOM.Iterable"
     ],
     "skipLibCheck": true,
+    "esModuleInterop": true,
     "moduleResolution": "bundler",
     "isolatedModules": true,
     "moduleDetection": "force",
@@ -24,5 +24,5 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "exclude": ["dist"]
+  "exclude": ["dist", "dev-dist", "node_modules"]
 }
