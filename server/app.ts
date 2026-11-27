@@ -41,26 +41,19 @@ function resolveSyncTarget(passphrase: string): { hash: string; filePath: string
 const PRIMARY_MODEL = 'gemini-3.1-flash-lite';
 const FALLBACK_MODEL = 'gemini-4-hydrogen';
 
-function resolveGeminiApiKey(): { apiKey: string | null; source: string | null } {
-  const candidates: Array<[string, string | undefined]> = [
-    ['RIVIFY_API_KEY', process.env.RIVIFY_API_KEY],
-    ['GEMINI_API_KEY', process.env.GEMINI_API_KEY],
-    ['GOOGLE_API_KEY', process.env.GOOGLE_API_KEY],
-  ];
-  for (const [name, raw] of candidates) {
-    const trimmed = raw?.trim();
-    if (trimmed) {
-      return { apiKey: trimmed, source: name };
-    }
-  }
-  return { apiKey: null, source: null };
+function resolveGeminiApiKey(): { apiKey: string | null; source: 'RIVIFY_API_KEY' | null } {
+  const apiKey = process.env.RIVIFY_API_KEY?.trim() || null;
+  return {
+    apiKey,
+    source: apiKey ? 'RIVIFY_API_KEY' : null,
+  };
 }
 
 function createGeminiClient(): { ai: GoogleGenAI; keySource: string } {
   const { apiKey, source } = resolveGeminiApiKey();
   if (!apiKey || !source) {
     throw new Error(
-      'Missing Gemini API key on the server. Configure RIVIFY_API_KEY or GEMINI_API_KEY in your deployment Environment Variables.'
+      'Missing Gemini API key on the server. Configure RIVIFY_API_KEY in your deployment Environment Variables.'
     );
   }
   return {
@@ -101,13 +94,13 @@ function extractReadableError(err: unknown): { status: number; message: string }
     }
   }
 
-  if (raw.includes('Missing Gemini API key') || raw.includes('GEMINI_API_KEY') || raw.includes('RIVIFY_API_KEY')) {
+  if (raw.includes('Missing Gemini API key') || raw.includes('RIVIFY_API_KEY')) {
     return { status: 503, message: raw };
   }
   if (raw.includes('403') || raw.includes('PERMISSION_DENIED') || raw.includes('API_KEY_INVALID') || raw.includes('API key not valid')) {
     return {
       status: 403,
-      message: 'API key rejected by Gemini API. Please verify RIVIFY_API_KEY or GEMINI_API_KEY in deployment environment variables.',
+      message: 'API key rejected by Gemini API. Please verify RIVIFY_API_KEY in deployment environment variables.',
     };
   }
   if (raw.includes('429') || raw.includes('RESOURCE_EXHAUSTED')) {
