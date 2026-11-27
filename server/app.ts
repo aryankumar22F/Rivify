@@ -98,6 +98,12 @@ function extractReadableError(err: unknown): { status: number; message: string }
       message: 'Rate limit reached. Please wait a few seconds and try again.',
     };
   }
+  if (raw.includes('OCR_TIMEOUT') || raw.includes('timed out')) {
+    return {
+      status: 504,
+      message: 'Equation recognition timed out. Please crop closer to the equation and try again.',
+    };
+  }
   if (raw.includes('503') || raw.includes('UNAVAILABLE')) {
     return {
       status: 503,
@@ -121,19 +127,41 @@ function isTransientError(err: unknown): boolean {
   );
 }
 
+function isTimeoutError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes('TIMEOUT') || msg.includes('timed out') || msg.includes('AbortError');
+}
+
 async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function generateWithTimeout(
+  ai: GoogleGenAI,
+  params: GenerateContentParameters,
+  timeoutMs: number
+) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      ai.models.generateContent(params),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('OCR_TIMEOUT: Request timed out.')), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 async function generateWithResilience(
   ai: GoogleGenAI,
   params: Omit<GenerateContentParameters, 'model'>
 ) {
-  const attempts: { model: string; delayMs: number }[] = [
-    { model: PRIMARY_MODEL, delayMs: 0 },
-    { model: PRIMARY_MODEL, delayMs: 550 },
-    { model: FALLBACK_MODEL, delayMs: 750 },
-    { model: FALLBACK_MODEL, delayMs: 1200 },
+  // Keep total execution comfortably within serverless 10s budget
+  const attempts: { model: string; delayMs: number; timeoutMs: number }[] = [
+    { model: PRIMARY_MODEL, delayMs: 0, timeoutMs: 5200 },
+    { model: FALLBACK_MODEL, delayMs: 150, timeoutMs: 3600 },
   ];
 
   let lastErr: unknown;
@@ -142,13 +170,17 @@ async function generateWithResilience(
       await sleep(attempt.delayMs);
     }
     try {
-      return await ai.models.generateContent({
-        ...params,
-        model: attempt.model,
-      });
+      return await generateWithTimeout(
+        ai,
+        {
+          ...params,
+          model: attempt.model,
+        },
+        attempt.timeoutMs
+      );
     } catch (err) {
       lastErr = err;
-      if (!isTransientError(err)) {
+      if (!isTransientError(err) && !isTimeoutError(err)) {
         throw err;
       }
     }
@@ -158,7 +190,37 @@ async function generateWithResilience(
 
 export function createApiApp() {
   const app = express();
-  app.use(express.json({ limit: '4mb' }));
+  const jsonParser = express.json({ limit: '10mb' });
+
+  // Prevent body-parser stream deadlock when Vercel (@vercel/node) pre-parses req.body
+  app.use((req, res, next) => {
+    const r = req as express.Request & { _body?: boolean; readableEnded?: boolean };
+    if (r.body !== undefined) {
+      if (typeof r.body === 'string') {
+        try {
+          r.body = JSON.parse(r.body);
+        } catch {
+          // keep raw string
+        }
+      } else if (Buffer.isBuffer(r.body)) {
+        try {
+          r.body = JSON.parse(r.body.toString('utf8'));
+        } catch {
+          // keep raw buffer
+        }
+      }
+      r._body = true;
+      next();
+      return;
+    }
+    if (r.readableEnded) {
+      r._body = true;
+      r.body = {};
+      next();
+      return;
+    }
+    jsonParser(req, res, next);
+  });
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true, ocrConfigured: Boolean(process.env.GEMINI_API_KEY) });
@@ -262,9 +324,9 @@ Do not include "f(x,y) =", markdown backticks, or any extra words. Just the expr
 Do NOT solve the equation or invent steps.
 Respond strictly as a JSON object with keys:
 - "readable": boolean (true if a valid math expression/equation is legible, false if image has no legible math)
-- "expression": string (single-line plain-text syntax compatible with a math parser using *, /, +, -, ^, parentheses, =, and functions like sin, cos, tan, ln, log, exp, sqrt; e.g. "x^2 - 5*x + 6 = 0" or "2*x^2*y + sin(x)")
-- "latex": string (clean LaTeX representation of the extracted expression)
-- "detectedCategory": string (e.g. "Algebraic Equation", "Calculus Expression", "Linear System", "Trigonometric Expression", or "Unreadable")
+- "expression": string (clean single-line expression or equation preserving notation like "∂f/∂x = 2*x*y + 3*y^2", "x^2 - 5*x + 6 = 0", or "2*x^2*y + sin(x)")
+- "latex": string (clean LaTeX representation, e.g. "\\frac{\\partial f}{\\partial x} = 2xy + 3y^2")
+- "detectedCategory": string (e.g. "Partial Differential", "Algebraic Equation", "Calculus Expression", "Linear System", "Trigonometric Expression", or "Unreadable")
 - "reason": string (only brief explanation if readable is false or notation was ambiguous).`,
             },
           ],
@@ -383,6 +445,21 @@ Respond strictly as a JSON object with keys:
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'API route not found.' });
   });
+
+  // Always serialize Express middleware errors (e.g. PayloadTooLargeError, SyntaxError) as JSON
+  app.use(
+    (
+      err: { status?: number; statusCode?: number; message?: string },
+      _req: express.Request,
+      res: express.Response,
+      _next: express.NextFunction
+    ) => {
+      const status = err.status || err.statusCode || 500;
+      res.status(status).json({
+        error: err.message || 'Server failed to process the request.',
+      });
+    }
+  );
 
   return app;
 }

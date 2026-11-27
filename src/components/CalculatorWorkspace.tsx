@@ -799,7 +799,7 @@ export function CalculatorWorkspace({
                   type="text"
                   value={expr}
                   onChange={(e) => setExpr(e.target.value)}
-                  placeholder="2*x^2*y^3"
+                  placeholder="2*x^2*y^3, \frac{\partial f}{\partial x} = 2xy + 3y^2, or 2xy + 3y²"
                   className={`w-full h-13 pl-4 pr-12 rounded-xl border bg-transparent font-mono text-sm sm:text-base text-slate-900 dark:text-white focus:outline-none ${
                     liveValidation.valid
                       ? 'border-slate-300 dark:border-white/25 focus:border-[#2F7CF6]'

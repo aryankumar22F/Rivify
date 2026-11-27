@@ -1,4 +1,5 @@
 import type { AngleUnit } from '../types';
+import { normalizeExpressionOnly } from './mathInput';
 
 export interface ScientificEvaluation {
   expression: string;
@@ -111,14 +112,7 @@ function nPr(n: number, r: number): number {
 }
 
 function tokenizeScientific(input: string): SciToken[] {
-  const cleaned = input
-    .replace(/π/g, 'pi')
-    .replace(/×/g, '*')
-    .replace(/÷/g, '/')
-    .replace(/·/g, '*')
-    .replace(/−/g, '-')
-    .replace(/√/g, 'sqrt')
-    .trim();
+  const cleaned = normalizeExpressionOnly(input).trim();
 
   if (!cleaned) {
     throw new Error('Enter an expression to calculate.');

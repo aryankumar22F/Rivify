@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { LineChart, Pause, Play, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
+import { normalizeExpressionOnly } from '../engine/mathInput';
 import { differentiate, evaluateAST, parseExpression, simplify, type ExprNode } from '../engine/symbolic';
 import type { AppSettings, RecentGraphSession } from '../types';
 
@@ -32,7 +33,7 @@ export function GraphingCalculatorView({
 
   useEffect(() => {
     if (externalGraph && externalGraph.expr.trim()) {
-      const cleaned = externalGraph.expr.replace(/^y\s*=\s*/i, '').replace(/^z\s*=\s*/i, '').trim();
+      const cleaned = normalizeExpressionOnly(externalGraph.expr).trim();
       if (/\by\b/i.test(cleaned)) {
         setSurfExpr(cleaned);
         setPlotMode('3d-surface');

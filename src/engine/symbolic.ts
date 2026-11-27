@@ -1,4 +1,5 @@
 import type { AngleUnit, DerivationStep } from '../types';
+import { normalizeExpressionOnly } from './mathInput';
 
 export type ExprNode =
   | { type: 'number'; value: number }
@@ -67,12 +68,11 @@ function normalizeFuncName(name: string): FuncName {
 }
 
 export function tokenize(input: string): Token[] {
-  const cleaned = input
-    .replace(/π/g, 'pi')
-    .replace(/·/g, '*')
-    .replace(/×/g, '*')
-    .replace(/−/g, '-')
-    .replace(/\s+/g, '');
+  const normalized = normalizeExpressionOnly(input);
+  if (normalized.includes('=')) {
+    throw new Error('Equations with "=" belong in Math Problem Solver (expression expected here).');
+  }
+  const cleaned = normalized.replace(/\s+/g, '');
 
   if (!cleaned) {
     throw new Error('Expression is empty');

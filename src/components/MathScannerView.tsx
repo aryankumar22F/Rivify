@@ -63,11 +63,49 @@ export function MathScannerView({
         setError('Could not read the selected image file.');
         return;
       }
-      const [meta, b64] = dataUrl.split(',', 2);
-      const detectedMime = meta.match(/data:(.*?);/)?.[1] || file.type;
-      setPreviewUrl(dataUrl);
-      setImageBase64(b64);
-      setMimeType(detectedMime);
+
+      const img = new Image();
+      img.onload = () => {
+        const MAX_DIM = 1400;
+        const scale = Math.min(1, MAX_DIM / Math.max(img.width || 1, img.height || 1));
+        const shouldReencode = scale < 1 || file.size > 450 * 1024;
+        if (!shouldReencode) {
+          const [meta, b64] = dataUrl.split(',', 2);
+          const detectedMime = meta.match(/data:(.*?);/)?.[1] || file.type;
+          setPreviewUrl(dataUrl);
+          setImageBase64(b64);
+          setMimeType(detectedMime);
+          return;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          const [meta, b64] = dataUrl.split(',', 2);
+          setPreviewUrl(dataUrl);
+          setImageBase64(b64);
+          setMimeType(meta.match(/data:(.*?);/)?.[1] || file.type);
+          return;
+        }
+        // White backdrop ensures dark transparent math equations stay readable in JPEG
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const compressedUrl = canvas.toDataURL('image/jpeg', 0.88);
+        const [, b64] = compressedUrl.split(',', 2);
+        setPreviewUrl(compressedUrl);
+        setImageBase64(b64);
+        setMimeType('image/jpeg');
+      };
+      img.onerror = () => {
+        const [meta, b64] = dataUrl.split(',', 2);
+        setPreviewUrl(dataUrl);
+        setImageBase64(b64);
+        setMimeType(meta.match(/data:(.*?);/)?.[1] || file.type);
+      };
+      img.src = dataUrl;
     };
     reader.onerror = () => setError('Failed to read image file.');
     reader.readAsDataURL(file);
@@ -195,14 +233,14 @@ export function MathScannerView({
             <label className="text-xs text-slate-500 dark:text-slate-400">
               Editable Plain Expression (for Solver / Grapher / Calculator)
             </label>
-            <textarea
+              <textarea
               rows={3}
               value={expression}
               onChange={(e) => {
                 setExpression(e.target.value);
-                if (!latex) setLatex(e.target.value);
+                setLatex(e.target.value);
               }}
-              placeholder="Extracted math expression will appear here..."
+              placeholder="Extracted math expression will appear here (or type normal text, LaTeX, or ASCII)..."
               className="mt-1 w-full p-3 rounded-xl border border-slate-300 dark:border-white/20 bg-transparent font-mono text-sm text-slate-900 dark:text-white"
             />
           </div>

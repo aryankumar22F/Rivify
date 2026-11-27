@@ -1,7 +1,9 @@
 import type { AngleUnit, DerivationStep } from '../types';
 import { solveMultivariableLimit } from './advancedMath';
 import { integrate1DComposite } from './integrals';
+import { analyzeMathInput, normalizeExpressionOnly, preprocessMathSyntax } from './mathInput';
 import {
+  dependsOn,
   differentiate,
   evaluateAST,
   extractVariables,
@@ -81,11 +83,7 @@ function tryPolynomialAntiderivative(node: ExprNode, variable: string): ExprNode
         f.right.value !== -1
       ) {
         power += f.right.value;
-      } else if (
-        f.type === 'number' ||
-        f.type === 'constant' ||
-        (f.type === 'variable' && f.name !== variable)
-      ) {
+      } else if (!dependsOn(f, variable)) {
         constFactors.push(f);
       } else {
         supported = false;
@@ -143,9 +141,10 @@ function solveLinearEquations(
   rawInput: string,
   angleUnit: AngleUnit
 ): { vars: string[]; values: number[]; steps: DerivationStep[] } {
-  const lines = rawInput
+  const analyzed = analyzeMathInput(rawInput);
+  const lines = analyzed.expr
     .split(/[;\n]+/)
-    .map((s) => s.trim())
+    .map((s) => preprocessMathSyntax(s.trim()))
     .filter(Boolean);
 
   if (lines.length < 2 || lines.length > 3) {
@@ -255,7 +254,8 @@ function solveOneVariableEquation(
   fixedScope: Record<string, number>,
   angleUnit: AngleUnit
 ): { roots: number[]; diffLatex: string; steps: DerivationStep[] } {
-  const parts = rawInput.split('=');
+  const cleanedInput = preprocessMathSyntax(rawInput.replace(/^solve\s+/i, '').trim());
+  const parts = cleanedInput.split('=');
   if (parts.length !== 2) {
     throw new Error('Equations must have one "=" sign, e.g. x^2 - 5*x + 6 = 0');
   }
@@ -392,25 +392,137 @@ export function solveMathProblem(params: {
     throw new Error('Enter a mathematical expression or equation to solve.');
   }
   const angleUnit = params.angleUnit ?? 'rad';
-  const variable = params.variable?.trim() || 'x';
-  const pt = params.point ?? { x: 1, y: 1, z: 1 };
-  const bounds = params.bounds ?? { lower: 0, upper: 1 };
+  const analyzed = analyzeMathInput(raw);
+  let variable = params.variable?.trim() || 'x';
+  let pt = params.point ?? { x: 1, y: 1, z: 1 };
+  let bounds = params.bounds ?? { lower: 0, upper: 1 };
 
   let effectiveMode: Exclude<SolverMode, 'auto'>;
+  let effectiveInput = raw;
+
   if (params.mode === 'auto') {
-    if (/[;\n]/.test(raw) && raw.includes('=')) {
+    if (analyzed.kind === 'linear-system') {
       effectiveMode = 'linear-system';
-    } else if (raw.includes('=')) {
+      effectiveInput = analyzed.expr;
+    } else if (analyzed.kind === 'differential-assignment') {
+      const diffVar = analyzed.variable || variable;
+      const rhsAst = parseExpression(analyzed.expr);
+      const rhsLatex = toLatex(rhsAst);
+      const allVars = extractVariables(rhsAst);
+      const otherVars = allVars.filter((v) => v !== diffVar);
+      const constLabel =
+        analyzed.isPartial && otherVars.length > 0 ? `C(${otherVars.join(', ')})` : 'C';
+      const anti = tryPolynomialAntiderivative(rhsAst, diffVar);
+      const defVal = integrate1DComposite(
+        (v) => evaluateAST(rhsAst, { ...pt, [diffVar]: v }, angleUnit),
+        bounds.lower,
+        bounds.upper,
+        8
+      );
+      const cleanDefVal = Number(defVal.toFixed(6));
+
+      let rateAtPt: number | null = null;
+      try {
+        const v = evaluateAST(rhsAst, pt, angleUnit);
+        if (Number.isFinite(v)) rateAtPt = Number(v.toFixed(6));
+      } catch {
+        rateAtPt = null;
+      }
+
+      const lhsTex = analyzed.isPartial
+        ? `\\frac{\\partial f}{\\partial ${diffVar}}`
+        : `\\frac{df}{d${diffVar}}`;
+
+      const steps: DerivationStep[] = [
+        {
+          id: 'diff-rel-1',
+          rule: analyzed.isPartial
+            ? 'Identified Partial Differential Relation'
+            : 'Identified Ordinary Differential Relation',
+          description: `Parsed normalized rate expression in variables (${
+            allVars.join(', ') || 'constant'
+          }).`,
+          latex: `${lhsTex} = ${rhsLatex}`,
+        },
+      ];
+
+      if (anti) {
+        steps.push({
+          id: 'diff-rel-2',
+          rule: analyzed.isPartial
+            ? `Integrate Partially w.r.t. ${diffVar}`
+            : `Antiderivative w.r.t. ${diffVar}`,
+          description: analyzed.isPartial
+            ? `Hold ${otherVars.join(', ') || 'other variables'} constant and integrate term-by-term.`
+            : `Integrate term-by-term with respect to ${diffVar}.`,
+          latex: `f(${allVars.join(', ') || diffVar}) = \\int \\left(${rhsLatex}\\right) d${diffVar} = ${toLatex(
+            anti
+          )} + ${constLabel}`,
+        });
+      }
+
+      steps.push({
+        id: 'diff-rel-3',
+        rule: 'Definite Integral & Point Rate',
+        description: `Accumulated change over [${bounds.lower}, ${bounds.upper}]${
+          rateAtPt !== null ? ` and rate at P(${pt.x}, ${pt.y}, ${pt.z})` : ''
+        }.`,
+        latex: `\\int_{${bounds.lower}}^{${bounds.upper}} \\left(${rhsLatex}\\right) d${diffVar} \\approx ${cleanDefVal}${
+          rateAtPt !== null ? `, \\quad \\left.${lhsTex}\\right|_P = ${rateAtPt}` : ''
+        }`,
+      });
+
+      return {
+        detectedMode: 'integral',
+        headline: analyzed.isPartial
+          ? `Partial Differential Integration (${lhsTex.includes('partial') ? `∂f/∂${diffVar}` : diffVar})`
+          : `Differential Equation Antiderivative (df/d${diffVar})`,
+        resultLatex: anti
+          ? `f = ${toLatex(anti)} + ${constLabel} \\quad \\left(${lhsTex} = ${rhsLatex}\\right)`
+          : `${lhsTex} = ${rhsLatex}, \\quad \\int_{${bounds.lower}}^{${bounds.upper}} = ${cleanDefVal}`,
+        resultPlain: anti ? `${toPlain(anti)} + ${constLabel}` : `${toPlain(rhsAst)} (def=${cleanDefVal})`,
+        steps,
+      };
+    } else if (analyzed.kind === 'function-assignment') {
+      effectiveMode = 'simplify';
+      effectiveInput = preprocessMathSyntax(analyzed.expr);
+    } else if (analyzed.kind === 'derivative') {
+      effectiveMode = 'derivative';
+      if (analyzed.variable) variable = analyzed.variable;
+      effectiveInput = preprocessMathSyntax(analyzed.expr);
+    } else if (analyzed.kind === 'integral') {
+      effectiveMode = 'integral';
+      if (analyzed.variable) variable = analyzed.variable;
+      if (analyzed.lower !== undefined || analyzed.upper !== undefined) {
+        bounds = {
+          lower: analyzed.lower ?? bounds.lower,
+          upper: analyzed.upper ?? bounds.upper,
+        };
+      }
+      effectiveInput = preprocessMathSyntax(analyzed.expr);
+    } else if (analyzed.kind === 'limit') {
+      effectiveMode = 'limit';
+      if (analyzed.variable) variable = analyzed.variable;
+      if (analyzed.limitTarget !== undefined) {
+        pt = { ...pt, [variable]: analyzed.limitTarget };
+      }
+      effectiveInput = preprocessMathSyntax(analyzed.expr);
+    } else if (analyzed.kind === 'equation') {
       effectiveMode = 'equation';
+      effectiveInput = analyzed.expr;
     } else {
       effectiveMode = 'simplify';
+      effectiveInput = preprocessMathSyntax(analyzed.expr);
     }
   } else {
     effectiveMode = params.mode;
+    if (effectiveMode !== 'equation' && effectiveMode !== 'linear-system') {
+      effectiveInput = normalizeExpressionOnly(raw);
+    }
   }
 
   if (effectiveMode === 'linear-system') {
-    const sys = solveLinearEquations(raw, angleUnit);
+    const sys = solveLinearEquations(effectiveInput, angleUnit);
     return {
       detectedMode: 'linear-system',
       headline: `${sys.vars.length}×${sys.vars.length} Linear System Solution`,
@@ -422,7 +534,7 @@ export function solveMathProblem(params: {
   }
 
   if (effectiveMode === 'equation') {
-    const eq = solveOneVariableEquation(raw, variable, pt, angleUnit);
+    const eq = solveOneVariableEquation(effectiveInput, variable, pt, angleUnit);
     return {
       detectedMode: 'equation',
       headline: `Real Roots in ${variable}`,
@@ -437,7 +549,7 @@ export function solveMathProblem(params: {
     };
   }
 
-  const ast = parseExpression(raw);
+  const ast = parseExpression(effectiveInput);
 
   if (effectiveMode === 'simplify') {
     const simpLatex = toLatex(ast);
@@ -558,7 +670,7 @@ export function solveMathProblem(params: {
   const isMulti = vars.includes('y') || vars.includes('z');
   if (isMulti) {
     const lim = solveMultivariableLimit(
-      raw,
+      effectiveInput,
       { x0: pt.x, y0: pt.y, z0: pt.z },
       vars.includes('z'),
       angleUnit

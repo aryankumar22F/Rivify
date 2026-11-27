@@ -90,7 +90,7 @@ export function MathSolverView({
               Mathematical Problem Solver
             </h2>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              Solve algebraic equations, 2×2/3×3 linear systems, symbolic derivatives, definite/polynomial integrals, limits, and simplifications step by step.
+              Accepts normal text, LaTeX (<span className="font-mono">\frac&#123;\partial f&#125;&#123;\partial x&#125; = 2xy + 3y^2</span>), Unicode (<span className="font-mono">∂f/∂x = 2xy + 3y²</span>), or standard ASCII (<span className="font-mono">2*x*y + 3*y^2</span>).
             </p>
           </div>
           <button
@@ -175,7 +175,7 @@ export function MathSolverView({
               rows={3}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="e.g. x^2 - 5*x + 6 = 0 or 2*x + y = 5; x - y = 1"
+              placeholder="Normal text, LaTeX (\frac{\partial f}{\partial x} = 2xy + 3y^2), or ASCII (2*x*y + 3*y^2)"
               className="mt-1 w-full p-3 rounded-xl border border-slate-300 dark:border-white/20 bg-transparent font-mono text-sm text-slate-900 dark:text-white focus:outline-none focus:border-[#2F7CF6]"
             />
           </div>

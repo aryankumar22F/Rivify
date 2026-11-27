@@ -820,3 +820,105 @@ test('Unit Converter, Formula Derivation & Custom Question Paper tools operate a
   assert.ok(paper.totalMarks > 0);
 });
 
+test('Universal Multi-Format Input (Normal Text, Unicode, LaTeX, Explicit ASCII) works across Solver, Symbolic, Calculus, and Scientific engines', () => {
+  // 1. All 4 forms for 2*x*y + 3*y^2
+  const forms = [
+    '2*x*y + 3*y^2',
+    '2xy + 3y^2',
+    '\\frac{\\partial f}{\\partial x} = 2xy + 3y^2',
+    '∂f/∂x = 2xy + 3y²',
+    'f(x, y) = 2xy + 3y²',
+    '2 times x times y plus 3 y squared',
+  ];
+  for (const expr of forms) {
+    const val = validateExpression(expr);
+    assert.equal(val.valid, true, `Expected valid for "${expr}", got error: ${val.error}`);
+    const ast = parseExpression(expr);
+    const num = evaluateAST(ast, { x: 2, y: 3 });
+    assert.equal(num, 2 * 2 * 3 + 3 * 9, `Evaluation mismatch for "${expr}"`);
+  }
+
+  // 2. Partial derivative tool accepts LaTeX assignment cleanly
+  const pdFromLatex = solvePartialDerivative('\\frac{\\partial f}{\\partial x} = 2xy + 3y^2', 'x', 1);
+  assert.equal(pdFromLatex.plain, '2*y');
+
+  // 3. Math Solver handles LaTeX & Unicode partial differential relations in auto mode
+  const diffAssignLatex = solveMathProblem({
+    input: '\\frac{\\partial f}{\\partial x} = 2xy + 3y^2',
+    mode: 'auto',
+    point: { x: 2, y: 1, z: 1 },
+  });
+  assert.equal(diffAssignLatex.detectedMode, 'integral');
+  assert.ok(diffAssignLatex.resultPlain.includes('x^2*y'));
+  assert.ok(diffAssignLatex.resultPlain.includes('C(y)'));
+
+  const diffAssignUnicode = solveMathProblem({
+    input: '∂f/∂x = 2xy + 3y²',
+    mode: 'auto',
+  });
+  assert.equal(diffAssignUnicode.detectedMode, 'integral');
+  assert.ok(diffAssignUnicode.resultPlain.includes('3*x*y^2'));
+
+  // 4. Natural-language and LaTeX calculus commands in Solver
+  const textDeriv = solveMathProblem({
+    input: 'derivative of 2xy + 3y^2 with respect to x',
+    mode: 'auto',
+  });
+  assert.equal(textDeriv.detectedMode, 'derivative');
+  assert.equal(textDeriv.resultPlain, '2*y');
+
+  const latexDeriv = solveMathProblem({
+    input: '\\frac{d}{dx}(x^3 + \\sin x)',
+    mode: 'auto',
+  });
+  assert.equal(latexDeriv.detectedMode, 'derivative');
+  assert.ok(latexDeriv.resultPlain.includes('3*x^2'));
+
+  const latexInt = solveMathProblem({
+    input: '\\int_{0}^{2} 3x^2 \\, dx',
+    mode: 'auto',
+  });
+  assert.equal(latexInt.detectedMode, 'integral');
+  assert.ok(latexInt.resultPlain.includes('8'));
+
+  const textInt = solveMathProblem({
+    input: 'integrate 3x^2 from 0 to 2',
+    mode: 'auto',
+  });
+  assert.equal(textInt.detectedMode, 'integral');
+  assert.ok(textInt.resultPlain.includes('8'));
+
+  // 5. LaTeX fractions, roots, powers on trig, abs, and space-separated trig
+  const trigPow = evaluateAST(parseExpression('\\sin^2(x) + \\cos^2(x)'), { x: 0.7 });
+  assert.ok(Math.abs(trigPow - 1) < 1e-9);
+
+  const absVal = evaluateAST(parseExpression('\\left|x - 5\\right|'), { x: 2 });
+  assert.equal(absVal, 3);
+
+  const spaceTrig = evaluateAST(parseExpression('sin x + sqrt 16'), { x: 0 });
+  assert.equal(spaceTrig, 4);
+
+  // 6. LaTeX cases system and implicit polynomial equation
+  const sysLatex = solveMathProblem({
+    input: '\\begin{cases} 2x + 3y = 8 \\\\ x - y = 1 \\end{cases}',
+    mode: 'auto',
+  });
+  assert.equal(sysLatex.detectedMode, 'linear-system');
+  assert.deepEqual(sysLatex.systemSolution?.values, [2.2, 1.2]);
+
+  const eqText = solveMathProblem({
+    input: 'solve x^2 - 5x + 6 = 0',
+    mode: 'auto',
+  });
+  assert.deepEqual(eqText.roots, [2, 3]);
+
+  // 7. Scientific calculator accepts LaTeX, Unicode, and normal text
+  const sciLatex = evaluateScientificExpression('\\frac{3}{4} + \\sqrt{16} \\cdot 2^{3}');
+  assert.ok(Math.abs(sciLatex.value - 32.75) < 1e-9);
+
+  const sciUnicode = evaluateScientificExpression('2×3 + 4²');
+  assert.equal(sciUnicode.value, 22);
+
+  const sciText = evaluateScientificExpression('square root of 16 plus 2 times 3 squared');
+  assert.equal(sciText.value, 22);
+});
